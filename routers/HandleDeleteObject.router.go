@@ -1,0 +1,29 @@
+package routers
+
+import (
+	"net/http"
+
+	"github.com/aidenappl/openbucket-api/aws"
+	"github.com/aidenappl/openbucket-api/responder"
+	"github.com/gorilla/mux"
+)
+
+func HandleDeleteObject(w http.ResponseWriter, r *http.Request) {
+	// Get mux vars
+	vars := mux.Vars(r)
+	bucket := vars["bucket"]
+	key := vars["key"]
+
+	if bucket == "" || key == "" {
+		responder.ErrMissingParam(w, "bucket or key")
+		return
+	}
+
+	err := aws.DeleteObject(bucket, key)
+	if err != nil {
+		responder.SendError(w, http.StatusInternalServerError, "Failed to delete object", err)
+		return
+	}
+
+	responder.New(w, nil, "Object deleted successfully")
+}
