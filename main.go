@@ -63,6 +63,8 @@ func main() {
 	bucket.HandleFunc("/folder", routers.HandleCreateFolder).Methods(http.MethodPost)
 	// Update Folder
 	bucket.HandleFunc("/folder", routers.HandleUpdateFolder).Methods(http.MethodPut)
+	// Delete Folder
+	bucket.HandleFunc("/folder", routers.HandleDeleteFolder).Methods(http.MethodDelete)
 
 	// Bucket Operations
 	// List Buckets
