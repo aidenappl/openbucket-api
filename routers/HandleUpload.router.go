@@ -1,6 +1,8 @@
 package routers
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"strings"
 
@@ -33,6 +35,12 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	buf, err := io.ReadAll(file)
+	if err != nil {
+		responder.SendError(w, http.StatusInternalServerError, "Failed to read file", err)
+		return
+	}
+
 	req.Bucket = mux.Vars(r)["bucket"]
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")
@@ -55,7 +63,7 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 	err = aws.Upload(aws.UploadRequest{
 		Bucket: req.Bucket,
 		Key:    req.Prefix + req.Key,
-		Body:   file,
+		Body:   bytes.NewReader(buf),
 	})
 	if err != nil {
 		responder.SendError(w, http.StatusInternalServerError, "Failed to upload file", err)
