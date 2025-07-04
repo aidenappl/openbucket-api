@@ -25,7 +25,6 @@ func Upload(req UploadRequest) error {
 
 	request, _ := s3Client.PutObjectRequest(input)
 
-	// Use conditional write to prevent overwriting
 	if req.Overwrite == nil || !*req.Overwrite {
 		request.HTTPRequest.Header.Set("If-None-Match", "*")
 	}
