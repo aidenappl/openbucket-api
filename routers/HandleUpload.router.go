@@ -2,14 +2,17 @@ package routers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/responder"
+	"github.com/gorilla/mux"
 )
 
 type HandleUploadRequest struct {
 	Bucket string `json:"bucket"`
 	Key    string `json:"key"`
+	Prefix string `json:"prefix,omitempty"` // Optional prefix to filter objects
 }
 
 func HandleUpload(w http.ResponseWriter, r *http.Request) {
@@ -30,10 +33,18 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	req.Bucket = r.FormValue("bucket")
+	req.Bucket = mux.Vars(r)["bucket"]
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")
 		return
+	}
+
+	req.Prefix = r.FormValue("prefix") // Optional prefix from form data
+	if req.Prefix != "" {
+		// Normalize prefix: if it's not empty and doesn't end with '/', append '/'
+		if !strings.HasSuffix(req.Prefix, "/") {
+			req.Prefix += "/"
+		}
 	}
 
 	req.Key = r.FormValue("key")
@@ -43,7 +54,7 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 	err = aws.Upload(aws.UploadRequest{
 		Bucket: req.Bucket,
-		Key:    req.Key,
+		Key:    req.Prefix + req.Key,
 		Body:   file,
 	})
 	if err != nil {

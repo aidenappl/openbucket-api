@@ -43,17 +43,16 @@ func main() {
 	bucket := core.PathPrefix("/{bucket}").Subrouter()
 
 	// -- Object Operations --
-	object := bucket.PathPrefix("/object").Subrouter()
 	// Put Object
-	object.HandleFunc("/", routers.HandleUpload).Methods(http.MethodPut)
+	bucket.HandleFunc("/object", routers.HandleUpload).Methods(http.MethodPut)
 	// Get Object
-	object.HandleFunc("/{key}", routers.HandleGetObject).Methods(http.MethodGet)
+	bucket.HandleFunc("/object", routers.HandleGetObject).Methods(http.MethodGet)
 	// Delete Object
-	object.HandleFunc("/{key}", routers.HandleDeleteObject).Methods(http.MethodDelete)
+	bucket.HandleFunc("/object", routers.HandleDeleteObject).Methods(http.MethodDelete)
 	// List Objects
-	object.HandleFunc("/", routers.HandleListObjects).Methods(http.MethodGet)
-	// // Head Object
-	// object.HandleFunc("/{bucket}/{key}", routers.HandleHeadObject).Methods(http.MethodHead)
+	bucket.HandleFunc("/objects", routers.HandleListObjects).Methods(http.MethodGet)
+	// Presign Object
+	bucket.HandleFunc("/object/presign", routers.HandlePresign).Methods(http.MethodGet)
 
 	// -- Folder Operations --
 	// Get Folder

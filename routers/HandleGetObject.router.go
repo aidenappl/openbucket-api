@@ -12,7 +12,9 @@ func HandleGetObject(w http.ResponseWriter, r *http.Request) {
 	//  Get mux variables
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
-	key := vars["key"]
+
+	key := r.URL.Query().Get("key") // Object key from query parameters
+
 	if bucket == "" || key == "" {
 		responder.ErrMissingParam(w, "bucket or key")
 		return
