@@ -8,8 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func ListObjects(bucket, prefix string) ([]string, error) {
-	var keys []string
+func ListObjects(bucket, prefix string) ([]*s3.Object, error) {
+	var objects []*s3.Object
 
 	// Normalize prefix: if it's not empty and doesn't end with '/', append '/'
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
@@ -27,7 +27,7 @@ func ListObjects(bucket, prefix string) ([]string, error) {
 			if item != nil && item.Key != nil {
 				// Exclude the folder key itself if present
 				if *item.Key != prefix {
-					keys = append(keys, *item.Key)
+					objects = append(objects, item)
 				}
 			}
 		}
@@ -38,5 +38,5 @@ func ListObjects(bucket, prefix string) ([]string, error) {
 		return nil, fmt.Errorf("failed to list objects: %w", err)
 	}
 
-	return keys, nil
+	return objects, nil
 }
