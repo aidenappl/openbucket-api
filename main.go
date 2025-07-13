@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/aidenappl/openbucket-api/db"
 	"github.com/aidenappl/openbucket-api/env"
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/routers"
@@ -13,13 +12,6 @@ import (
 )
 
 func main() {
-	// Ping DB
-	if err := db.PingDB(); err != nil {
-		log.Fatalf("❌ Failed to connect to the database: %v", err)
-	} else {
-		log.Println("✅ Connected to the database successfully")
-	}
-
 	// Initialize the router
 	r := mux.NewRouter()
 

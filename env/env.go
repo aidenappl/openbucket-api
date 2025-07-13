@@ -6,7 +6,6 @@ import (
 )
 
 var (
-	CoreDB   = getEnvOrPanic("CORE_DB")
 	Port     = getEnv("PORT", "8000")
 	Endpoint = getEnvOrPanic("ENDPOINT")
 )
