@@ -32,6 +32,9 @@ func main() {
 
 	// Core V1 API Endpoint
 	core := r.PathPrefix("/core/v1/").Subrouter()
+	core.HandleFunc("/session", routers.HandleCreateSession).Methods(http.MethodPost)
+
+	// Bucket Operations
 	bucket := core.PathPrefix("/{bucket}").Subrouter()
 
 	// -- Object Operations --

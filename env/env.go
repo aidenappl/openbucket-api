@@ -6,8 +6,10 @@ import (
 )
 
 var (
-	Port     = getEnv("PORT", "8000")
-	Endpoint = getEnvOrPanic("ENDPOINT")
+	Port       = getEnv("PORT", "8000")
+	Endpoint   = getEnvOrPanic("ENDPOINT")
+	JWT_SECRET = getEnvOrPanic("JWT_SECRET")
+	CryptoKey  = getEnvOrPanic("CRYPTO_KEY")
 )
 
 func getEnv(key string, fallback string) string {
