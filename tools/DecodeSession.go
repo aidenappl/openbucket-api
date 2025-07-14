@@ -15,6 +15,7 @@ type SessionClaims struct {
 	Endpoint   string  `json:"endpoint"`
 	AccessKey  *string `json:"accessKey,omitempty"` // will be decrypted
 	SecretKey  *string `json:"secretKey,omitempty"` // will be decrypted
+	Token      *string `json:"token,omitempty"`     // optional, for session management
 	jwt.RegisteredClaims
 }
 
@@ -49,6 +50,8 @@ func DecodeAndDecryptSession(tokenString string) (*SessionClaims, error) {
 		}
 		claims.SecretKey = &decryptedSecret
 	}
+
+	claims.Token = &tokenString
 
 	return claims, nil
 }
