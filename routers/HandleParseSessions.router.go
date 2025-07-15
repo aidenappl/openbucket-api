@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/aidenappl/openbucket-api/responder"
 	"github.com/aidenappl/openbucket-api/tools"
@@ -33,13 +34,24 @@ func HandleParseSessions(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			if errors.Is(err, jwt.ErrTokenExpired) {
 				// regenerate token
-				log.Println("Session expired, regenerating token")
+				claims = &tools.SessionClaims{
+					BucketName: claims.BucketName,
+					Nickname:   claims.Nickname,
+					Region:     claims.Region,
+					Endpoint:   claims.Endpoint,
+					AccessKey:  claims.AccessKey,
+					SecretKey:  claims.SecretKey,
+					RegisteredClaims: jwt.RegisteredClaims{
+						ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)),
+					},
+				}
 				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 				signedToken, err := token.SignedString(jwtSecret)
 				if err != nil {
 					responder.SendError(w, http.StatusInternalServerError, "Failed to sign token", err)
 					return
 				}
+				log.Println("new token generated:", signedToken)
 				claims.Token = &signedToken
 			} else {
 				responder.SendError(w, http.StatusBadRequest, "Failed to decode session", err)

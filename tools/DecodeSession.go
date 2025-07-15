@@ -50,7 +50,7 @@ func DecodeAndDecryptSession(tokenString string) (*SessionClaims, error) {
 		claims.AccessKey = &decryptedAccess
 	}
 
-	if claims.SecretKey == nil {
+	if claims.SecretKey != nil {
 		decryptedSecret, err := Decrypt(*claims.SecretKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt secret key: %w", err)
