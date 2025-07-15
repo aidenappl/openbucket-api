@@ -26,6 +26,13 @@ func DecodeAndDecryptSession(tokenString string) (*SessionClaims, error) {
 		return secret, nil
 	})
 	if err != nil || !token.Valid {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			claims, ok := token.Claims.(*SessionClaims)
+			if !ok {
+				return nil, errors.New("invalid claim structure")
+			}
+			return claims, err
+		}
 		return nil, fmt.Errorf("invalid token: %w", err)
 	}
 

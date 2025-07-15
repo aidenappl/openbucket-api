@@ -2,10 +2,13 @@ package routers
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 
 	"github.com/aidenappl/openbucket-api/responder"
 	"github.com/aidenappl/openbucket-api/tools"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type HandleParseSessionsRequest struct {
@@ -28,8 +31,20 @@ func HandleParseSessions(w http.ResponseWriter, r *http.Request) {
 	for _, session := range body.Sessions {
 		claims, err := tools.DecodeAndDecryptSession(session)
 		if err != nil {
-			responder.SendError(w, http.StatusBadRequest, "Failed to decode session", err)
-			return
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				// regenerate token
+				log.Println("Session expired, regenerating token")
+				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+				signedToken, err := token.SignedString(jwtSecret)
+				if err != nil {
+					responder.SendError(w, http.StatusInternalServerError, "Failed to sign token", err)
+					return
+				}
+				claims.Token = &signedToken
+			} else {
+				responder.SendError(w, http.StatusBadRequest, "Failed to decode session", err)
+				return
+			}
 		}
 		if claims == nil {
 			responder.SendError(w, http.StatusBadRequest, "Invalid session format", nil)
