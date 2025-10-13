@@ -49,6 +49,8 @@ func main() {
 	bucket.HandleFunc("/objects", routers.HandleListObjects).Methods(http.MethodGet)
 	// Presign Object
 	bucket.HandleFunc("/object/presign", routers.HandlePresign).Methods(http.MethodGet)
+	// Rename Object
+	bucket.HandleFunc("/object/rename", routers.HandleRenameObject).Methods(http.MethodPut)
 
 	// -- Folder Operations --
 	// Get Folder

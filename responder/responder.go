@@ -3,6 +3,7 @@ package responder
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 type ResponseStructure struct {
@@ -22,6 +23,9 @@ func New(w http.ResponseWriter, data interface{}, message ...string) {
 	} else {
 		response.Message = "request was successful"
 	}
+
+	// set message to lowercase
+	response.Message = strings.ToLower(response.Message)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
