@@ -22,7 +22,7 @@ func HandleListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call the AWS function to list folders
-	folders, err := aws.ListFolders(bucket, prefix)
+	folders, err := aws.ListFolders(r.Context(), bucket, prefix)
 	if err != nil {
 		responder.SendError(w, http.StatusInternalServerError, "Failed to list folders", err)
 		return

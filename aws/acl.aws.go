@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -13,7 +14,7 @@ var (
 	ACLBucketOwner = "bucket-owner-full-control"
 )
 
-func ModifyACL(bucket, key string, acl string) error {
+func ModifyACL(ctx context.Context, bucket, key string, acl string) error {
 
 	if bucket == "" {
 		return fmt.Errorf("bucket name cannot be empty")
@@ -28,9 +29,12 @@ func ModifyACL(bucket, key string, acl string) error {
 			acl, ACLPublicRead, ACLPrivate, ACLBucketOwner)
 	}
 
-	svc := s3.New(sess)
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create AWS session: %v", err)
+	}
 
-	_, err := svc.PutObjectAcl(&s3.PutObjectAclInput{
+	_, err = s3Client.PutObjectAcl(&s3.PutObjectAclInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 		ACL:    aws.String(acl),

@@ -1,6 +1,8 @@
 package aws
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -12,15 +14,20 @@ type FolderRequest struct {
 	Prefix string `json:"prefix"`
 }
 
-func DeleteFolder(req FolderRequest) error {
+func DeleteFolder(ctx context.Context, req FolderRequest) error {
 
 	if !strings.HasSuffix(req.Prefix, "/") {
 		req.Prefix += "/"
 	}
 
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
 	// List all objects under this prefix
 	var toDelete []*s3.ObjectIdentifier
-	err := s3Client.ListObjectsV2Pages(&s3.ListObjectsV2Input{
+	err = s3Client.ListObjectsV2Pages(&s3.ListObjectsV2Input{
 		Bucket: aws.String(req.Bucket),
 		Prefix: aws.String(req.Prefix),
 	}, func(page *s3.ListObjectsV2Output, last bool) bool {

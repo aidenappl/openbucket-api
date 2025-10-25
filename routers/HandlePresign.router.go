@@ -46,7 +46,7 @@ func HandlePresign(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle the presigned URL generation logic here
-	url, err := aws.PresignObject(req.Bucket, req.Key, req.Expiration)
+	url, err := aws.PresignObject(r.Context(), req.Bucket, req.Key, req.Expiration)
 	if err != nil {
 		responder.SendError(w, http.StatusInternalServerError, "Failed to generate presigned URL", err)
 		return

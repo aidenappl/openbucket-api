@@ -2,6 +2,7 @@ package aws
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -10,13 +11,18 @@ import (
 )
 
 // CreateFolder safely creates a "folder" (prefix object) in a bucket without overwriting.
-func CreateFolder(bucket, folder string) error {
+func CreateFolder(ctx context.Context, bucket, folder string) error {
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
 	if folder == "" || folder[len(folder)-1] != '/' {
 		folder += "/"
 	}
 
 	// Step 1: Check if it already exists
-	_, err := s3Client.HeadObject(&s3.HeadObjectInput{
+	_, err = s3Client.HeadObject(&s3.HeadObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(folder),
 	})

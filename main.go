@@ -18,6 +18,9 @@ func main() {
 	// Request logger
 	r.Use(middleware.LoggingMiddleware)
 
+	// Token authentication middleware
+	r.Use(middleware.TokenAuthMiddleware)
+
 	// Base API Endpoint
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -1,6 +1,8 @@
 package aws
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -8,7 +10,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func PresignObject(bucket, key string, expiration int64) (string, error) {
+func PresignObject(ctx context.Context, bucket, key string, expiration int64) (string, error) {
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
 	if expiration <= 0 {
 		expiration = 3600 // Default to 1 hour if not specified or invalid
 	}

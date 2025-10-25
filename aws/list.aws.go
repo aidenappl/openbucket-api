@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func ListObjects(bucket, prefix string) ([]*s3.Object, error) {
+func ListObjects(ctx context.Context, bucket, prefix string) ([]*s3.Object, error) {
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
 	var objects []*s3.Object
 
 	// Normalize prefix: if it's not empty and doesn't end with '/', append '/'
@@ -22,7 +28,7 @@ func ListObjects(bucket, prefix string) ([]*s3.Object, error) {
 		Delimiter: aws.String("/"),    // Only list items directly in the folder, not recursively
 	}
 
-	err := s3Client.ListObjectsV2Pages(input, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
+	err = s3Client.ListObjectsV2Pages(input, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, item := range page.Contents {
 			if item != nil && item.Key != nil {
 				// Exclude the folder key itself if present

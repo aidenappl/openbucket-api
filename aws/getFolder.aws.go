@@ -1,15 +1,21 @@
 package aws
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func GetFolder(bucket string, prefix string) ([]Object, error) {
+func GetFolder(ctx context.Context, bucket string, prefix string) ([]Object, error) {
 	if bucket == "" || prefix == "" {
 		return nil, fmt.Errorf("bucket and prefix are required")
+	}
+
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get S3 client: %w", err)
 	}
 
 	out, err := s3Client.ListObjectsV2(&s3.ListObjectsV2Input{

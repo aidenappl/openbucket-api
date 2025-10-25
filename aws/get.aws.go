@@ -1,13 +1,19 @@
 package aws
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func GetObject(bucket, key string) (*s3.GetObjectOutput, error) {
+func GetObject(ctx context.Context, bucket, key string) (*s3.GetObjectOutput, error) {
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
 	// Create a new request to get the object from S3
 	req := &s3.GetObjectInput{
 		Bucket: aws.String(bucket),

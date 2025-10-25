@@ -29,7 +29,7 @@ func HandleDeleteFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := aws.DeleteFolder(aws.FolderRequest{
+	err := aws.DeleteFolder(r.Context(), aws.FolderRequest{
 		Bucket: req.Bucket,
 		Prefix: req.Folder,
 	})

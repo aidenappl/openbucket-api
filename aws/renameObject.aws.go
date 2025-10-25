@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,14 +9,19 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func RenameObject(bucket, sourceKey, destinationKey string) error {
+func RenameObject(ctx context.Context, bucket, sourceKey, destinationKey string) error {
 	// Reject renaming folders (by convention, keys ending in '/')
 	if strings.HasSuffix(sourceKey, "/") {
 		return fmt.Errorf("cannot rename a folder object: %q", sourceKey)
 	}
 
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
 	// Step 1: Copy the object
-	_, err := s3Client.CopyObject(&s3.CopyObjectInput{
+	_, err = s3Client.CopyObject(&s3.CopyObjectInput{
 		Bucket:     aws.String(bucket),
 		CopySource: aws.String(fmt.Sprintf("%s/%s", bucket, sourceKey)),
 		Key:        aws.String(destinationKey),

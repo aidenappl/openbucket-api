@@ -60,7 +60,7 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 		req.Key = header.Filename // Use the original filename if no key is provided
 	}
 
-	err = aws.Upload(aws.UploadRequest{
+	err = aws.Upload(r.Context(), aws.UploadRequest{
 		Bucket: req.Bucket,
 		Key:    req.Prefix + req.Key,
 		Body:   bytes.NewReader(buf),

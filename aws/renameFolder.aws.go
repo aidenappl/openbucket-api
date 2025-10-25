@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -10,13 +11,18 @@ import (
 
 // RenameFolder renames a folder by copying all objects under sourcePrefix to destPrefix
 // and then deleting the originals. Both prefixes should end in "/".
-func RenameFolder(bucket, sourcePrefix, destPrefix string) error {
+func RenameFolder(ctx context.Context, bucket, sourcePrefix, destPrefix string) error {
 	if !strings.HasSuffix(sourcePrefix, "/") || !strings.HasSuffix(destPrefix, "/") {
 		return fmt.Errorf("both source and destination must be folder-like (end in '/')")
 	}
 
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
 	// List all objects under the source prefix
-	err := s3Client.ListObjectsV2Pages(&s3.ListObjectsV2Input{
+	err = s3Client.ListObjectsV2Pages(&s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
 		Prefix: aws.String(sourcePrefix),
 	}, func(page *s3.ListObjectsV2Output, lastPage bool) bool {

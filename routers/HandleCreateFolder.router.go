@@ -31,7 +31,7 @@ func HandleCreateFolder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call the AWS function to create a folder
-	err = aws.CreateFolder(req.Bucket, req.Folder)
+	err = aws.CreateFolder(r.Context(), req.Bucket, req.Folder)
 	if err != nil {
 		responder.SendError(w, http.StatusInternalServerError, "Failed to create folder", err)
 		return

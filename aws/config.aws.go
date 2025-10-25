@@ -1,19 +1,96 @@
 package aws
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/aidenappl/openbucket-api/env"
+	"github.com/aidenappl/openbucket-api/tools"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
+type contextKey string
+
+const SessionContextKey contextKey = "session"
+
+// GetSessionFromContext extracts session claims from context
+func GetSessionFromContext(ctx context.Context) (*tools.SessionClaims, error) {
+	sessionData := ctx.Value(SessionContextKey)
+	if sessionData == nil {
+		return nil, fmt.Errorf("no session found in context")
+	}
+
+	session, ok := sessionData.(*tools.SessionClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid session type in context")
+	}
+
+	return session, nil
+}
+
+// CreateAWSSession creates an AWS session from context session claims
+func CreateAWSSession(ctx context.Context) (*session.Session, error) {
+	sessionClaims, err := GetSessionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	config := &aws.Config{
+		Endpoint:         aws.String(sessionClaims.Endpoint),
+		Region:           aws.String(sessionClaims.Region),
+		S3ForcePathStyle: aws.Bool(true),
+	}
+
+	// Use credentials from session if provided, otherwise fall back to env vars
+	if sessionClaims.AccessKey != nil && sessionClaims.SecretKey != nil {
+		config.Credentials = credentials.NewStaticCredentials(
+			*sessionClaims.AccessKey,
+			*sessionClaims.SecretKey,
+			"", // token
+		)
+	}
+
+	return session.NewSession(config)
+}
+
+// GetS3Client creates an S3 client from context
+func GetS3Client(ctx context.Context) (*s3.S3, error) {
+	sess, err := CreateAWSSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s3.New(sess), nil
+}
+
+// GetUploader creates an S3 uploader from context
+func GetUploader(ctx context.Context) (*s3manager.Uploader, error) {
+	sess, err := CreateAWSSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s3manager.NewUploader(sess), nil
+}
+
+// GetDownloader creates an S3 downloader from context
+func GetDownloader(ctx context.Context) (*s3manager.Downloader, error) {
+	sess, err := CreateAWSSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s3manager.NewDownloader(sess), nil
+}
+
+// Legacy support: fallback to environment variables for backwards compatibility
 var (
-	sess = session.Must(session.NewSession(&aws.Config{
+	defaultSess = session.Must(session.NewSession(&aws.Config{
 		Endpoint:         aws.String(env.Endpoint),
 		S3ForcePathStyle: aws.Bool(true),
 	}))
-	uploader   = s3manager.NewUploader(sess)
-	downloader = s3manager.NewDownloader(sess)
-	s3Client   = s3.New(sess)
+	defaultUploader   = s3manager.NewUploader(defaultSess)
+	defaultDownloader = s3manager.NewDownloader(defaultSess)
+	defaultS3Client   = s3.New(defaultSess)
 )

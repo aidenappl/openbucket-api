@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -16,7 +17,12 @@ type UploadRequest struct {
 	Overwrite *bool // Optional: to control whether to overwrite existing objects
 }
 
-func Upload(req UploadRequest) error {
+func Upload(ctx context.Context, req UploadRequest) error {
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(req.Bucket),
 		Key:    aws.String(req.Key),
@@ -29,7 +35,7 @@ func Upload(req UploadRequest) error {
 		request.HTTPRequest.Header.Set("If-None-Match", "*")
 	}
 
-	err := request.Send()
+	err = request.Send()
 
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {

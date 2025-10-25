@@ -34,7 +34,7 @@ func HandleListObjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call the AWS function to list objects
-	objects, err := aws.ListObjects(req.Bucket, req.Prefix)
+	objects, err := aws.ListObjects(r.Context(), req.Bucket, req.Prefix)
 	if err != nil {
 		http.Error(w, "Failed to list objects: "+err.Error(), http.StatusInternalServerError)
 		return

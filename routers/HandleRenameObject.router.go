@@ -35,7 +35,7 @@ func HandleRenameObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := aws.RenameObject(req.Bucket, req.Key, req.NewKey)
+	err := aws.RenameObject(r.Context(), req.Bucket, req.Key, req.NewKey)
 	if err != nil {
 		responder.SendError(w, http.StatusInternalServerError, "Failed to rename object", err)
 		return

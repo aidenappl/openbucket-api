@@ -19,7 +19,7 @@ func HandleDeleteObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := aws.DeleteObject(bucket, key)
+	err := aws.DeleteObject(r.Context(), bucket, key)
 	if err != nil {
 		responder.SendError(w, http.StatusInternalServerError, "Failed to delete object", err)
 		return
