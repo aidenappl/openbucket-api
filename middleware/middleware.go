@@ -20,6 +20,23 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// Get Session
+func GetSession(ctx context.Context) *tools.SessionClaims {
+	sessionData := ctx.Value(SessionContextKey)
+	if sessionData == nil {
+		log.Println("No session found in context")
+		return nil
+	}
+
+	session, ok := sessionData.(*tools.SessionClaims)
+	if !ok {
+		log.Println("Invalid session type in context")
+		return nil
+	}
+
+	return session
+}
+
 // Token Handling
 func TokenAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +62,8 @@ func TokenAuthMiddleware(next http.Handler) http.Handler {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
+
+			log.Println("Authenticated request using endpoint:", token.Endpoint)
 
 			ctx := context.WithValue(r.Context(), SessionContextKey, token)
 			r = r.WithContext(ctx)

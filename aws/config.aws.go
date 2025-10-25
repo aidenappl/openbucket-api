@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/aidenappl/openbucket-api/env"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/tools"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -19,17 +20,12 @@ const SessionContextKey contextKey = "session"
 
 // GetSessionFromContext extracts session claims from context
 func GetSessionFromContext(ctx context.Context) (*tools.SessionClaims, error) {
-	sessionData := ctx.Value(SessionContextKey)
+	sessionData := middleware.GetSession(ctx)
 	if sessionData == nil {
 		return nil, fmt.Errorf("no session found in context")
 	}
 
-	session, ok := sessionData.(*tools.SessionClaims)
-	if !ok {
-		return nil, fmt.Errorf("invalid session type in context")
-	}
-
-	return session, nil
+	return sessionData, nil
 }
 
 // CreateAWSSession creates an AWS session from context session claims
