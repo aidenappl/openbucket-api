@@ -41,7 +41,7 @@ func GetSession(ctx context.Context) *tools.SessionClaims {
 func TokenAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// ignore session routes & health checks
-		if r.URL.Path == "/core/v1/sessions" || r.URL.Path == "/health" || r.URL.Path == "/" {
+		if r.URL.Path == "/core/v1/sessions" || r.URL.Path == "/health" || r.URL.Path == "/" || r.URL.Path == "/core/v1/session" {
 			next.ServeHTTP(w, r)
 			return
 		}
