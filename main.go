@@ -80,6 +80,7 @@ func main() {
 		AllowedOrigins: []string{
 			"http://localhost:3000",
 			"https://openbucket.com",
+			"http://sandbox.onprem.appleby.cloud:3001/",
 		},
 		AllowCredentials: true,
 		AllowedHeaders:   []string{"*"},
