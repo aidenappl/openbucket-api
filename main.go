@@ -77,11 +77,7 @@ func main() {
 
 	// CORS Middleware
 	corsMiddleware := cors.New(cors.Options{
-		AllowedOrigins: []string{
-			"http://localhost:3000",
-			"https://openbucket.com",
-			"http://sandbox.onprem.appleby.cloud:3001/",
-		},
+		AllowedOrigins:   []string{"*"},
 		AllowCredentials: true,
 		AllowedHeaders:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
