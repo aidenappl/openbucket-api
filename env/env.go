@@ -7,7 +7,6 @@ import (
 
 var (
 	Port       = getEnv("PORT", "8000")
-	Endpoint   = getEnvOrPanic("ENDPOINT")
 	JWT_SECRET = getEnvOrPanic("JWT_SECRET")
 	CryptoKey  = getEnvOrPanic("CRYPTO_KEY")
 )

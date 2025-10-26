@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aidenappl/openbucket-api/env"
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/tools"
 	"github.com/aws/aws-sdk-go/aws"
@@ -74,14 +73,3 @@ func GetDownloader(ctx context.Context) (*s3manager.Downloader, error) {
 	}
 	return s3manager.NewDownloader(sess), nil
 }
-
-// Legacy support: fallback to environment variables for backwards compatibility
-var (
-	defaultSess = session.Must(session.NewSession(&aws.Config{
-		Endpoint:         aws.String(env.Endpoint),
-		S3ForcePathStyle: aws.Bool(true),
-	}))
-	defaultUploader   = s3manager.NewUploader(defaultSess)
-	defaultDownloader = s3manager.NewDownloader(defaultSess)
-	defaultS3Client   = s3.New(defaultSess)
-)
