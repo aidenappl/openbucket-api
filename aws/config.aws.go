@@ -8,7 +8,6 @@ import (
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/tools"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -43,11 +42,7 @@ func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 
 	// Use credentials from session if provided, otherwise fall back to env vars
 	if sessionClaims.AccessKey != nil && sessionClaims.SecretKey != nil {
-		config.Credentials = credentials.NewStaticCredentials(
-			*sessionClaims.AccessKey,
-			*sessionClaims.SecretKey,
-			"", // token
-		)
+		panic("failed to get session information")
 	}
 
 	return session.NewSession(config)
