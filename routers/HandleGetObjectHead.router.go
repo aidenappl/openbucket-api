@@ -9,7 +9,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func HandleGetObject(w http.ResponseWriter, r *http.Request) {
+func HandleGetObjectHead(w http.ResponseWriter, r *http.Request) {
 	//  Get mux variables
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
@@ -22,8 +22,8 @@ func HandleGetObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := aws.GetObject(r.Context(), bucket, key)
-	
+	res, err := aws.GetObjectHead(r.Context(), bucket, key)
+
 	if err != nil {
 		if aws.NotFound(err) {
 			log.Println("Object not found:", err)

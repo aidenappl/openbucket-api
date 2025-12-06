@@ -48,10 +48,12 @@ func TokenAuthMiddleware(next http.Handler) http.Handler {
 
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			log.Println("Missing Authorization header")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		} else {
 			if len(authHeader) < 7 || authHeader[:7] != "Bearer " {
+				log.Println("Invalid Authorization header format")
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -59,6 +61,7 @@ func TokenAuthMiddleware(next http.Handler) http.Handler {
 			tokenString := authHeader[7:]
 			token, err := tools.DecodeAndDecryptSession(tokenString)
 			if err != nil || token == nil {
+				log.Println("Failed to decode and decrypt session:", err)
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
