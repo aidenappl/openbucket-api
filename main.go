@@ -46,6 +46,8 @@ func main() {
 	bucket.HandleFunc("/object", routers.HandleUpload).Methods(http.MethodPut)
 	// Get Object
 	bucket.HandleFunc("/object", routers.HandleGetObject).Methods(http.MethodGet)
+	// Get Object ACL
+	bucket.HandleFunc("/object/acl", routers.HandleGetObjectACL).Methods(http.MethodGet)
 	// Delete Object
 	bucket.HandleFunc("/object", routers.HandleDeleteObject).Methods(http.MethodDelete)
 	// List Objects

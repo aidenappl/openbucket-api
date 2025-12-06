@@ -45,3 +45,28 @@ func ModifyACL(ctx context.Context, bucket, key string, acl string) error {
 
 	return nil
 }
+
+func GetObjectACL(ctx context.Context, bucket, key string) (*s3.GetObjectAclOutput, error) {
+	if bucket == "" {
+		return nil, fmt.Errorf("bucket name cannot be empty")
+	}
+
+	if key == "" {
+		return nil, fmt.Errorf("object key cannot be empty")
+	}
+
+	s3Client, err := GetS3Client(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AWS session: %v", err)
+	}
+
+	output, err := s3Client.GetObjectAcl(&s3.GetObjectAclInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object ACL: %v", err)
+	}
+
+	return output, nil
+}
