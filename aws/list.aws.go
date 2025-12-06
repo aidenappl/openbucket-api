@@ -41,7 +41,7 @@ func ListObjects(ctx context.Context, bucket, prefix string) ([]*s3.Object, erro
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to list objects: %w", err)
+		return nil, err
 	}
 
 	return objects, nil

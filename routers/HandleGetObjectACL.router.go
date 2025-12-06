@@ -22,11 +22,10 @@ func HandleGetObjectACL(w http.ResponseWriter, r *http.Request) {
 
 	res, err := aws.GetObjectACL(r.Context(), bucket, key)
 	if err != nil {
-		if aws.NotFound(err) {
-			responder.SendError(w, http.StatusNotFound, "Object not found", err)
+		if aws.CheckError(err, w, r) {
 			return
 		}
-		responder.SendError(w, http.StatusInternalServerError, "Failed to get object", err)
+		responder.SendError(w, http.StatusInternalServerError, "Failed to get object ACL", err)
 		return
 	}
 

@@ -66,6 +66,9 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 		Body:   bytes.NewReader(buf),
 	})
 	if err != nil {
+		if aws.CheckError(err, w, r) {
+			return
+		}
 		responder.SendError(w, http.StatusInternalServerError, "Failed to upload file", err)
 		return
 	}

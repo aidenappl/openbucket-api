@@ -34,6 +34,9 @@ func HandleDeleteFolder(w http.ResponseWriter, r *http.Request) {
 		Prefix: req.Folder,
 	})
 	if err != nil {
+		if aws.CheckError(err, w, r) {
+			return
+		}
 		responder.SendError(w, http.StatusInternalServerError, "Failed to delete folder", err)
 		return
 	}

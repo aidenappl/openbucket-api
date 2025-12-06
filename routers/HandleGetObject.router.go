@@ -23,14 +23,11 @@ func HandleGetObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := aws.GetObject(r.Context(), bucket, key)
-	
+
 	if err != nil {
-		if aws.NotFound(err) {
-			log.Println("Object not found:", err)
-			responder.SendError(w, http.StatusNotFound, "Object not found", err)
+		if aws.CheckError(err, w, r) {
 			return
 		}
-		log.Println("Failed to get object:", err)
 		responder.SendError(w, http.StatusInternalServerError, "Failed to get object", err)
 		return
 	}

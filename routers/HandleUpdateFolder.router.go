@@ -35,6 +35,9 @@ func HandleUpdateFolder(w http.ResponseWriter, r *http.Request) {
 	if req.Name != req.Folder {
 		err := aws.RenameFolder(r.Context(), req.Bucket, req.Folder, req.Name)
 		if err != nil {
+			if aws.CheckError(err, w, r) {
+				return
+			}
 			responder.SendError(w, http.StatusInternalServerError, "Failed to rename folder", err)
 			return
 		}

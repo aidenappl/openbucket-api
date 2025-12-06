@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,6 +19,7 @@ func GetObjectHead(ctx context.Context, bucket, key string) (*s3.HeadObjectOutpu
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	}
+
 	result, err := s3Client.HeadObject(input)
 	if err != nil {
 		return nil, err
@@ -25,7 +27,7 @@ func GetObjectHead(ctx context.Context, bucket, key string) (*s3.HeadObjectOutpu
 
 	// Check if the object was found
 	if result == nil {
-		return nil, fmt.Errorf("object not found: bucket=%s, key=%s", bucket, key)
+		return nil, errors.New("object not found")
 	}
 
 	return result, nil

@@ -25,6 +25,9 @@ func HandleGetFolder(w http.ResponseWriter, r *http.Request) {
 	// Call the AWS function to get the folder
 	folder, err := aws.GetFolder(r.Context(), req.Bucket, req.Folder)
 	if err != nil {
+		if aws.CheckError(err, w, r) {
+			return
+		}
 		responder.SendError(w, http.StatusInternalServerError, "Failed to get folder", err)
 		return
 	}

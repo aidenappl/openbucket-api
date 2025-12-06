@@ -14,7 +14,7 @@ var (
 	ACLBucketOwner = "bucket-owner-full-control"
 )
 
-func ModifyACL(ctx context.Context, bucket, key string, acl string) error {
+func ModifyObjectACL(ctx context.Context, bucket, key string, acl string) error {
 
 	if bucket == "" {
 		return fmt.Errorf("bucket name cannot be empty")
@@ -40,7 +40,7 @@ func ModifyACL(ctx context.Context, bucket, key string, acl string) error {
 		ACL:    aws.String(acl),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to modify object ACL: %v", err)
+		return err
 	}
 
 	return nil
@@ -65,7 +65,7 @@ func GetObjectACL(ctx context.Context, bucket, key string) (*s3.GetObjectAclOutp
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get object ACL: %v", err)
+		return nil, err
 	}
 
 	return output, nil

@@ -2,6 +2,7 @@ package responder
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -12,6 +13,7 @@ type ErrorResponse struct {
 }
 
 func SendError(w http.ResponseWriter, status int, errMessage string, err ...error) {
+	log.Println(status, " Error response:", errMessage)
 	errResp := ErrorResponse{
 		Error:        nil,
 		ErrorMessage: errMessage,

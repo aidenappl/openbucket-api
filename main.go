@@ -50,6 +50,8 @@ func main() {
 	bucket.HandleFunc("/object/head", routers.HandleGetObjectHead).Methods(http.MethodGet)
 	// Get Object ACL
 	bucket.HandleFunc("/object/acl", routers.HandleGetObjectACL).Methods(http.MethodGet)
+	// Modify Object ACL
+	bucket.HandleFunc("/object/acl", routers.HandleModifyObjectACL).Methods(http.MethodPut)
 	// Delete Object
 	bucket.HandleFunc("/object", routers.HandleDeleteObject).Methods(http.MethodDelete)
 	// List Objects
