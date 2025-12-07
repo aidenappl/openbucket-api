@@ -48,6 +48,8 @@ func main() {
 	bucket.HandleFunc("/object", routers.HandleGetObject).Methods(http.MethodGet)
 	// Get Object Head
 	bucket.HandleFunc("/object/head", routers.HandleGetObjectHead).Methods(http.MethodGet)
+	// Get [POST] Object Head (Bulk)
+	bucket.HandleFunc("/object/head", routers.HandleGetObjectHead).Methods(http.MethodPost)
 	// Get Object ACL
 	bucket.HandleFunc("/object/acl", routers.HandleGetObjectACL).Methods(http.MethodGet)
 	// Modify Object ACL

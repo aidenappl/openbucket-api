@@ -9,6 +9,13 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+func stripQuotes(s string) string {
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
 func ListObjects(ctx context.Context, bucket, prefix string) ([]*s3.Object, error) {
 	s3Client, err := GetS3Client(ctx)
 	if err != nil {
@@ -33,6 +40,9 @@ func ListObjects(ctx context.Context, bucket, prefix string) ([]*s3.Object, erro
 			if item != nil && item.Key != nil {
 				// Exclude the folder key itself if present
 				if *item.Key != prefix {
+					if item.ETag != nil {
+						*item.ETag = stripQuotes(*item.ETag)
+					}
 					objects = append(objects, item)
 				}
 			}
