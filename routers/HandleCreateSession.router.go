@@ -11,7 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte(env.JWT_SECRET) // ❗ Replace with env var in production
+var jwtSecret = []byte(env.JWT_SECRET)
 
 type CreateSessionRequest struct {
 	BucketName string  `json:"bucket"`
