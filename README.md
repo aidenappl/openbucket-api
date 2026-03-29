@@ -24,7 +24,7 @@ A Go-based API for S3-compatible bucket operations with Forta authentication.
 | Variable                      | Default                       | Description                                                |
 | ----------------------------- | ----------------------------- | ---------------------------------------------------------- |
 | `PORT`                        | `8000`                        | Server port                                                |
-| `FORTA_DOMAIN`                | `https://forta.appleby.cloud` | Forta authentication server URL                            |
+| `FORTA_DOMAIN`                | `https://login.appleby.cloud` | Forta authentication server URL                            |
 | `FORTA_POST_LOGIN_REDIRECT`   | `/`                           | Redirect after successful login                            |
 | `FORTA_POST_LOGOUT_REDIRECT`  | `/`                           | Redirect after logout                                      |
 | `FORTA_COOKIE_DOMAIN`         | ``                            | Cookie domain (e.g., `.appleby.cloud` for cross-subdomain) |

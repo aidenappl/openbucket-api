@@ -1,6 +1,6 @@
 # Forta Authentication
 
-OpenBucket API uses [Forta](https://forta.appleby.cloud) as its authentication provider via the `go-forta` library.
+OpenBucket API uses [Forta](https://login.appleby.cloud) as its authentication provider via the `go-forta` library.
 
 ## Overview
 
@@ -31,7 +31,7 @@ Initiates the OAuth2 login flow by redirecting the user to the Forta authorizati
 
 ```
 GET /forta/login
-→ 302 Redirect to https://forta.appleby.cloud/oauth/authorize?...
+→ 302 Redirect to https://login.appleby.cloud/oauth/authorize?...
 ```
 
 ---

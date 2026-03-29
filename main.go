@@ -15,7 +15,8 @@ import (
 func main() {
 	// Initialize Forta authentication
 	if err := forta.Setup(forta.Config{
-		Domain:             env.FortaDomain,
+		APIDomain:          "https://auth.appleby.cloud",
+		LoginDomain:        "https://login.appleby.cloud",
 		ClientID:           env.FortaClientID,
 		ClientSecret:       env.FortaClientSecret,
 		CallbackURL:        env.FortaCallbackURL,

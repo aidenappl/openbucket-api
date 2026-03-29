@@ -8,11 +8,15 @@ This guide explains how to integrate Forta authentication into your frontend app
 
 Forta uses cookie-based OAuth2 authentication. The flow is:
 
-1. Frontend redirects user to `/forta/login`
-2. User authenticates on Forta
-3. Forta redirects back to `/forta/callback`
-4. API sets HttpOnly cookies and redirects to your app
-5. Subsequent requests automatically include auth cookies
+1. Frontend navigates to the API's `/forta/login` endpoint
+2. API generates CSRF token, sets state cookie, and redirects to `login.appleby.cloud`
+3. User authenticates on Forta
+4. Forta redirects back to `/forta/callback` with auth code
+5. API exchanges code for tokens and sets HttpOnly cookies
+6. API redirects to your app
+7. Subsequent requests automatically include auth cookies
+
+**Important:** Always use the API's `/forta/login` endpoint rather than redirecting directly to `login.appleby.cloud`. The API generates the proper OAuth2 URL with CSRF protection.
 
 ---
 
@@ -23,7 +27,8 @@ Forta uses cookie-based OAuth2 authentication. The flow is:
 ```tsx
 function LoginButton() {
   const handleLogin = () => {
-    // Redirect to the API's login endpoint
+    // Navigate to the API's login endpoint
+    // The API will redirect to login.appleby.cloud with the proper OAuth2 URL
     window.location.href = "https://your-api.com/forta/login";
   };
 
@@ -154,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = () => {
     // Store current URL to redirect back after login
     sessionStorage.setItem("returnUrl", window.location.pathname);
+    // Navigate to API's login endpoint - it will redirect to login.appleby.cloud
     window.location.href = `${API_URL}/forta/login`;
   };
 
