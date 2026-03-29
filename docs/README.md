@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [Forta Authentication](forta-authentication.md) - OAuth2 authentication via Forta
+- [Frontend Integration](frontend-integration.md) - How to integrate Forta auth in your frontend
 
 ## Quick Links
 
