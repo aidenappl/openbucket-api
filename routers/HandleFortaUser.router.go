@@ -7,36 +7,27 @@ import (
 	"github.com/aidenappl/openbucket-api/responder"
 )
 
-// CurrentUserResponse represents the response for the current user endpoint
-type CurrentUserResponse struct {
-	ID          int64   `json:"id"`
-	Email       string  `json:"email,omitempty"`
-	Name        *string `json:"name,omitempty"`
-	DisplayName *string `json:"display_name,omitempty"`
-}
-
 // HandleGetCurrentUser returns the currently authenticated Forta user's information.
 // This endpoint requires Forta authentication (use forta.Protected wrapper).
 func HandleGetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	// Get the Forta user ID (always available in Protected handlers)
-	fortaID, ok := forta.GetFortaIDFromContext(r.Context())
+	_, ok := forta.GetFortaIDFromContext(r.Context())
 	if !ok {
 		responder.SendError(w, http.StatusUnauthorized, "unauthenticated", nil)
 		return
 	}
 
-	response := CurrentUserResponse{
-		ID: fortaID,
-	}
-
-	// Get the full user profile if available
-	// (only present when JWTSigningKey is empty OR FetchUserOnProtect is true)
+	// Try context first (populated if FetchUserOnProtect or remote validation)
 	user, hasUser := forta.GetUserFromContext(r.Context())
-	if hasUser {
-		response.Email = user.Email
-		response.Name = user.Name
-		response.DisplayName = user.DisplayName
+	if !hasUser {
+		// Explicitly fetch the full profile from Forta API
+		fetched, err := forta.FetchCurrentUser(r)
+		if err != nil {
+			responder.SendError(w, http.StatusInternalServerError, "failed to fetch user profile", err)
+			return
+		}
+		user = fetched
 	}
 
-	responder.New(w, response, "successfully retrieved current user")
+	responder.New(w, user, "successfully retrieved current user")
 }
