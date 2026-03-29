@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/aidenappl/openbucket-api/aws"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/responder"
-	"github.com/gorilla/mux"
 )
 
 type HandleCreateFolderRequest struct {
@@ -23,7 +23,7 @@ func HandleCreateFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Bucket = mux.Vars(r)["bucket"] // From the core URL
+	req.Bucket = middleware.GetSession(r.Context()).BucketName // From session context
 
 	if req.Bucket == "" || req.Folder == "" {
 		responder.ErrMissingParam(w, "bucket or folder")

@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/aidenappl/openbucket-api/aws"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/responder"
-	"github.com/gorilla/mux"
 )
 
 type ObjectACL string
@@ -32,8 +32,7 @@ func HandleModifyObjectACL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	req.Bucket = vars["bucket"]
+	req.Bucket = middleware.GetSession(r.Context()).BucketName
 
 	req.Key = r.URL.Query().Get("key")
 

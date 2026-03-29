@@ -1,10 +1,10 @@
 # Forta Authentication
 
-OpenBucket API uses [Forta](https://login.appleby.cloud) as its authentication provider via the `go-forta` library.
+OpenBucket API uses [Forta](https://login.appleby.cloud) as its authentication provider via the `go-forta` library. This is a first-party platform — all authentication is handled server-side with no public OAuth2 callback exposed.
 
 ## Overview
 
-Forta provides OAuth2-based authentication with automatic token refresh, cookie management, and both local and remote token validation strategies.
+Forta provides OAuth2-based authentication with automatic token refresh, cookie management, and both local and remote token validation strategies. All `/core/v1/` routes are protected and require a valid Forta session cookie.
 
 ---
 
@@ -21,10 +21,10 @@ Initiates the OAuth2 login flow by redirecting the user to the Forta authorizati
 **Flow:**
 
 1. Generates a random CSRF `state` value and stores it in a short-lived HttpOnly cookie
-2. Redirects to `{FORTA_DOMAIN}/oauth/authorize` with:
+2. Redirects to `https://login.appleby.cloud/oauth/authorize` with:
    - `response_type=code`
    - `client_id`
-   - `redirect_uri` (your callback URL)
+   - `redirect_uri` (`FORTA_CALLBACK_URL`)
    - `state` (CSRF token)
 
 **Example:**
@@ -36,37 +36,179 @@ GET /forta/login
 
 ---
 
-### GET `/forta/callback`
+### GET `/forta/logout`
 
-OAuth2 callback handler that exchanges the authorization code for access tokens.
+Logs out the user by clearing authentication cookies.
 
 **Authentication:** None required
 
-**Query Parameters:**
-| Parameter | Type | Required | Description |
-|-----------|--------|----------|--------------------------------|
-| `code` | string | Yes | Authorization code from Forta |
-| `state` | string | Yes | CSRF state token |
-
-**Response:**
-
-- `302 Redirect` to `FORTA_POST_LOGIN_REDIRECT` on success
-- `400 Bad Request` on missing parameters or CSRF mismatch
+**Response:** `302 Redirect` to `FORTA_POST_LOGOUT_REDIRECT`
 
 **Flow:**
 
-1. Validates `state` against the CSRF cookie
-2. Exchanges `code` for tokens via `POST {FORTA_DOMAIN}/auth/exchange`
-3. Sets `forta-access-token` and `forta-refresh-token` HttpOnly cookies
-4. Redirects to configured post-login URL
+1. Expires `forta-access-token` cookie
+2. Expires `forta-refresh-token` cookie
+3. Redirects to configured post-logout URL
 
-**Error Response:**
+**Example:**
+
+```
+GET /forta/logout
+→ 302 Redirect to /
+```
+
+---
+
+### GET `/self`
+
+Returns the currently authenticated user's profile information.
+
+**Authentication:** Required (Forta session cookie)
+
+**Response:** `200 OK`
+
+**Response Body:**
 
 ```json
 {
-  "error": "missing code or state parameter"
+  "data": {
+    "id": 12345,
+    "email": "user@example.com",
+    "name": "John Doe",
+    "display_name": "johnd"
+  },
+  "message": "successfully retrieved current user"
 }
 ```
+
+**Error Response (`401 Unauthorized`):**
+
+```json
+{
+  "error": "unauthenticated"
+}
+```
+
+**Notes:**
+
+- The `email`, `name`, and `display_name` fields are only present when `FORTA_FETCH_USER_ON_PROTECT=true` or `FORTA_JWT_SIGNING_KEY` is empty (remote validation)
+- With local JWT validation only, just `id` is guaranteed
+
+---
+
+## Authentication Flow
+
+### Browser-Based Login
+
+```
+┌─────────┐     ┌─────────────┐     ┌───────────────┐
+│ Browser │     │ OpenBucket  │     │ Forta Server  │
+└────┬────┘     └──────┬──────┘     └───────┬───────┘
+     │                 │                    │
+     │ GET /forta/login│                    │
+     │────────────────>│                    │
+     │                 │                    │
+     │    302 Redirect │                    │
+     │<────────────────│                    │
+     │                 │                    │
+     │ GET /oauth/authorize                 │
+     │─────────────────────────────────────>│
+     │                 │                    │
+     │         User authenticates           │
+     │<─────────────────────────────────────│
+     │                 │                    │
+     │ FORTA_CALLBACK_URL?code=...&state=...│
+     │────────────────>│                    │
+     │                 │                    │
+     │                 │ POST /auth/exchange│
+     │                 │───────────────────>│
+     │                 │                    │
+     │                 │   Access + Refresh │
+     │                 │<───────────────────│
+     │                 │                    │
+     │ 302 + Set-Cookie│                    │
+     │<────────────────│                    │
+     │                 │                    │
+```
+
+### API Request with Token
+
+```
+┌─────────┐     ┌─────────────┐     ┌───────────────┐
+│ Client  │     │ OpenBucket  │     │ Forta Server  │
+└────┬────┘     └──────┬──────┘     └───────┬───────┘
+     │                 │                    │
+     │ GET /self       │                    │
+     │ Cookie: forta-access-token=...       │
+     │────────────────>│                    │
+     │                 │                    │
+     │                 │ Validate token     │
+     │                 │ (local or remote)  │
+     │                 │                    │
+     │   200 OK        │                    │
+     │   { user data } │                    │
+     │<────────────────│                    │
+     │                 │                    │
+```
+
+### Auto-Refresh Flow
+
+When an access token expires and a valid refresh token exists:
+
+```
+┌─────────┐     ┌─────────────┐     ┌───────────────┐
+│ Client  │     │ OpenBucket  │     │ Forta Server  │
+└────┬────┘     └──────┬──────┘     └───────┬───────┘
+     │                 │                    │
+     │ GET /self       │                    │
+     │ (expired token) │                    │
+     │────────────────>│                    │
+     │                 │                    │
+     │                 │ POST /auth/refresh │
+     │                 │───────────────────>│
+     │                 │                    │
+     │                 │   New tokens       │
+     │                 │<───────────────────│
+     │                 │                    │
+     │ 200 OK          │                    │
+     │ Set-Cookie: new tokens              │
+     │<────────────────│                    │
+     │                 │                    │
+```
+
+---
+
+## Configuration
+
+See environment variables in the main [README](../README.md#environment-variables).
+
+| Variable                      | Description                              |
+| ----------------------------- | ---------------------------------------- |
+| `FORTA_CLIENT_ID`             | OAuth2 client ID                         |
+| `FORTA_CLIENT_SECRET`         | OAuth2 client secret                     |
+| `FORTA_CALLBACK_URL`          | Full callback URL for this service       |
+| `FORTA_JWT_SIGNING_KEY`       | Enable local token validation            |
+| `FORTA_POST_LOGIN_REDIRECT`   | Where to redirect after login            |
+| `FORTA_POST_LOGOUT_REDIRECT`  | Where to redirect after logout           |
+| `FORTA_COOKIE_DOMAIN`         | Cookie domain for cross-subdomain auth   |
+| `FORTA_FETCH_USER_ON_PROTECT` | Fetch full profile with local validation |
+
+---
+
+## Error Responses
+
+All error responses use this format:
+
+```json
+{
+  "error": "human-readable message"
+}
+```
+
+| Status                      | Scenario                                                |
+| --------------------------- | ------------------------------------------------------- |
+| `401 Unauthorized`          | Missing/invalid/expired token (when auto-refresh fails) |
+| `500 Internal Server Error` | Forta not initialized or unreachable at startup         |
 
 ---
 

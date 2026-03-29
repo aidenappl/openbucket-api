@@ -6,15 +6,14 @@ import (
 	"net/http"
 
 	"github.com/aidenappl/openbucket-api/aws"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/responder"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/gorilla/mux"
 )
 
 func HandleGetObjectHead(w http.ResponseWriter, r *http.Request) {
 	//  Get mux variables
-	vars := mux.Vars(r)
-	bucket := vars["bucket"]
+	bucket := middleware.GetSession(r.Context()).BucketName
 
 	q := r.URL.Query()
 	if _, ok := q["bulk"]; ok {

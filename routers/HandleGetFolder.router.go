@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/aidenappl/openbucket-api/aws"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/responder"
-	"github.com/gorilla/mux"
 )
 
 type HandleGetFolderRequest struct {
@@ -16,7 +16,7 @@ type HandleGetFolderRequest struct {
 func HandleGetFolder(w http.ResponseWriter, r *http.Request) {
 	var req HandleGetFolderRequest
 	// Parse variables
-	req.Bucket = mux.Vars(r)["bucket"] // From the core URL
+	req.Bucket = middleware.GetSession(r.Context()).BucketName // From session context
 	req.Folder = r.URL.Query().Get("folder")
 	if req.Bucket == "" || req.Folder == "" {
 		responder.ErrMissingParam(w, "bucket or folder")

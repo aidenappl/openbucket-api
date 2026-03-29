@@ -1,7 +1,6 @@
 package routers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	forta "github.com/aidenappl/go-forta"
@@ -40,33 +39,4 @@ func HandleGetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	responder.New(w, response, "successfully retrieved current user")
-}
-
-// HandleCheckAuth checks if the user is authenticated without requiring authentication.
-// Returns user info if authenticated, or a guest response if not.
-func HandleCheckAuth(w http.ResponseWriter, r *http.Request) {
-	user, err := forta.FetchCurrentUser(r)
-	if err != nil {
-		// Not authenticated - return guest response
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"authenticated": false,
-			"message":       "not authenticated",
-		})
-		return
-	}
-
-	// Authenticated - return user info
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"authenticated": true,
-		"user": CurrentUserResponse{
-			ID:          user.ID,
-			Email:       user.Email,
-			Name:        user.Name,
-			DisplayName: user.DisplayName,
-		},
-	})
 }

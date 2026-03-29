@@ -4,14 +4,13 @@ import (
 	"net/http"
 
 	"github.com/aidenappl/openbucket-api/aws"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/responder"
-	"github.com/gorilla/mux"
 )
 
 func HandleGetObjectACL(w http.ResponseWriter, r *http.Request) {
 	//  Get mux variables
-	vars := mux.Vars(r)
-	bucket := vars["bucket"]
+	bucket := middleware.GetSession(r.Context()).BucketName
 
 	key := r.URL.Query().Get("key") // Object key from query parameters
 

@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/aidenappl/openbucket-api/aws"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/responder"
-	"github.com/gorilla/mux"
 )
 
 type HandleDeleteFolderRequest struct {
@@ -16,7 +16,7 @@ type HandleDeleteFolderRequest struct {
 func HandleDeleteFolder(w http.ResponseWriter, r *http.Request) {
 	var req HandleDeleteFolderRequest
 
-	req.Bucket = mux.Vars(r)["bucket"] // From the core URL
+	req.Bucket = middleware.GetSession(r.Context()).BucketName // From session context
 
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")

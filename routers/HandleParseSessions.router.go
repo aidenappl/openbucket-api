@@ -1,73 +1,36 @@
 package routers
 
 import (
-	"encoding/json"
-	"errors"
-	"log"
 	"net/http"
-	"time"
 
+	forta "github.com/aidenappl/go-forta"
+	"github.com/aidenappl/openbucket-api/db"
+	"github.com/aidenappl/openbucket-api/query"
 	"github.com/aidenappl/openbucket-api/responder"
-	"github.com/aidenappl/openbucket-api/tools"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/aidenappl/openbucket-api/structs"
 )
 
-type HandleParseSessionsRequest struct {
-	Sessions []string `json:"sessions"`
-}
-
-func HandleParseSessions(w http.ResponseWriter, r *http.Request) {
-	var body HandleParseSessionsRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		responder.SendError(w, http.StatusBadRequest, "Invalid request body", err)
+func HandleListSessions(w http.ResponseWriter, r *http.Request) {
+	fortaID, ok := forta.GetFortaIDFromContext(r.Context())
+	if !ok {
+		responder.SendError(w, http.StatusUnauthorized, "unauthenticated", nil)
 		return
 	}
 
-	if len(body.Sessions) == 0 {
-		responder.SendError(w, http.StatusBadRequest, "No sessions provided", nil)
+	sessions, err := query.ListSessions(db.DB, query.ListSessionsRequest{
+		Select: &query.SelectSession{
+			FortaUserID: fortaID,
+		},
+	})
+	if err != nil {
+		responder.SendError(w, http.StatusInternalServerError, "Failed to fetch sessions", err)
 		return
 	}
-	var parsedSessions []tools.SessionClaims
 
-	for _, session := range body.Sessions {
-		claims, err := tools.DecodeAndDecryptSession(session)
-		if err != nil {
-			if errors.Is(err, jwt.ErrTokenExpired) {
-				// regenerate token
-				claims = &tools.SessionClaims{
-					BucketName: claims.BucketName,
-					Nickname:   claims.Nickname,
-					Region:     claims.Region,
-					Endpoint:   claims.Endpoint,
-					AccessKey:  claims.AccessKey,
-					SecretKey:  claims.SecretKey,
-					RegisteredClaims: jwt.RegisteredClaims{
-						ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)),
-					},
-				}
-				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-				signedToken, err := token.SignedString(jwtSecret)
-				if err != nil {
-					responder.SendError(w, http.StatusInternalServerError, "Failed to sign token", err)
-					return
-				}
-				log.Println("new token generated:", signedToken)
-				claims.Token = &signedToken
-			} else {
-				responder.SendError(w, http.StatusBadRequest, "Failed to decode session", err)
-				return
-			}
-		}
-		if claims == nil {
-			responder.SendError(w, http.StatusBadRequest, "Invalid session format", nil)
-			return
-		}
-
-		claims.AccessKey = nil
-		claims.SecretKey = nil
-
-		parsedSessions = append(parsedSessions, *claims)
+	public := make([]structs.PublicSession, len(sessions))
+	for i, s := range sessions {
+		public[i] = s.ToPublic()
 	}
 
-	responder.New(w, parsedSessions, "Sessions parsed successfully")
+	responder.New(w, public, "Sessions retrieved successfully")
 }

@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/aidenappl/openbucket-api/aws"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/responder"
-	"github.com/gorilla/mux"
 )
 
 type HandleRenameObjectRequest struct {
@@ -17,7 +17,7 @@ type HandleRenameObjectRequest struct {
 func HandleRenameObject(w http.ResponseWriter, r *http.Request) {
 	var req HandleRenameObjectRequest
 
-	req.Bucket = mux.Vars(r)["bucket"]
+	req.Bucket = middleware.GetSession(r.Context()).BucketName
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")
 		return

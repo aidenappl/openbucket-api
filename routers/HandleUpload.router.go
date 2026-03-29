@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/responder"
-	"github.com/gorilla/mux"
 )
 
 type HandleUploadRequest struct {
@@ -41,7 +41,7 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Bucket = mux.Vars(r)["bucket"]
+	req.Bucket = middleware.GetSession(r.Context()).BucketName
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")
 		return

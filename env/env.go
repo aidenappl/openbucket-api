@@ -6,12 +6,14 @@ import (
 )
 
 var (
-	Port       = getEnv("PORT", "8000")
-	JWT_SECRET = getEnvOrPanic("JWT_SECRET")
-	CryptoKey  = getEnvOrPanic("CRYPTO_KEY")
+	Port    = getEnv("PORT", "8000")
+	TLSCert = getEnv("TLS_CERT", "")
+	TLSKey  = getEnv("TLS_KEY", "")
+
+	CoreDBDSN = getEnvOrPanic("CORE_DB_DSN")
+	CryptoKey = getEnvOrPanic("CRYPTO_KEY")
 
 	// Forta Authentication Configuration
-	FortaDomain             = getEnvOrPanic("FORTA_DOMAIN")
 	FortaClientID           = getEnvOrPanic("FORTA_CLIENT_ID")
 	FortaClientSecret       = getEnvOrPanic("FORTA_CLIENT_SECRET")
 	FortaCallbackURL        = getEnvOrPanic("FORTA_CALLBACK_URL")
