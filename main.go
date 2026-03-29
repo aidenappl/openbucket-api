@@ -83,37 +83,37 @@ func main() {
 
 	// -- Object Operations --
 	// Put Object
-	bucket.HandleFunc("/object", forta.Protected(routers.HandleUpload)).Methods(http.MethodPut)
+	bucket.HandleFunc("/object", routers.HandleUpload).Methods(http.MethodPut)
 	// Get Object
-	bucket.HandleFunc("/object", forta.Protected(routers.HandleGetObject)).Methods(http.MethodGet)
+	bucket.HandleFunc("/object", routers.HandleGetObject).Methods(http.MethodGet)
 	// Get Object Head
-	bucket.HandleFunc("/object/head", forta.Protected(routers.HandleGetObjectHead)).Methods(http.MethodGet)
+	bucket.HandleFunc("/object/head", routers.HandleGetObjectHead).Methods(http.MethodGet)
 	// Get [POST] Object Head (Bulk)
-	bucket.HandleFunc("/object/head", forta.Protected(routers.HandleGetObjectHead)).Methods(http.MethodPost)
+	bucket.HandleFunc("/object/head", routers.HandleGetObjectHead).Methods(http.MethodPost)
 	// Get Object ACL
-	bucket.HandleFunc("/object/acl", forta.Protected(routers.HandleGetObjectACL)).Methods(http.MethodGet)
+	bucket.HandleFunc("/object/acl", routers.HandleGetObjectACL).Methods(http.MethodGet)
 	// Modify Object ACL
-	bucket.HandleFunc("/object/acl", forta.Protected(routers.HandleModifyObjectACL)).Methods(http.MethodPut)
+	bucket.HandleFunc("/object/acl", routers.HandleModifyObjectACL).Methods(http.MethodPut)
 	// Delete Object
-	bucket.HandleFunc("/object", forta.Protected(routers.HandleDeleteObject)).Methods(http.MethodDelete)
+	bucket.HandleFunc("/object", routers.HandleDeleteObject).Methods(http.MethodDelete)
 	// List Objects
-	bucket.HandleFunc("/objects", forta.Protected(routers.HandleListObjects)).Methods(http.MethodGet)
+	bucket.HandleFunc("/objects", routers.HandleListObjects).Methods(http.MethodGet)
 	// Presign Object
-	bucket.HandleFunc("/object/presign", forta.Protected(routers.HandlePresign)).Methods(http.MethodGet)
+	bucket.HandleFunc("/object/presign", routers.HandlePresign).Methods(http.MethodGet)
 	// Rename Object
-	bucket.HandleFunc("/object/rename", forta.Protected(routers.HandleRenameObject)).Methods(http.MethodPut)
+	bucket.HandleFunc("/object/rename", routers.HandleRenameObject).Methods(http.MethodPut)
 
 	// -- Folder Operations --
 	// Get Folder
-	bucket.HandleFunc("/folder", forta.Protected(routers.HandleGetFolder)).Methods(http.MethodGet)
+	bucket.HandleFunc("/folder", routers.HandleGetFolder).Methods(http.MethodGet)
 	// List Folders
-	bucket.HandleFunc("/folders", forta.Protected(routers.HandleListFolders)).Methods(http.MethodGet)
+	bucket.HandleFunc("/folders", routers.HandleListFolders).Methods(http.MethodGet)
 	// Create Folder
-	bucket.HandleFunc("/folder", forta.Protected(routers.HandleCreateFolder)).Methods(http.MethodPost)
+	bucket.HandleFunc("/folder", routers.HandleCreateFolder).Methods(http.MethodPost)
 	// Update Folder
-	bucket.HandleFunc("/folder", forta.Protected(routers.HandleUpdateFolder)).Methods(http.MethodPut)
+	bucket.HandleFunc("/folder", routers.HandleUpdateFolder).Methods(http.MethodPut)
 	// Delete Folder
-	bucket.HandleFunc("/folder", forta.Protected(routers.HandleDeleteFolder)).Methods(http.MethodDelete)
+	bucket.HandleFunc("/folder", routers.HandleDeleteFolder).Methods(http.MethodDelete)
 
 	// Bucket Operations
 	// List Buckets

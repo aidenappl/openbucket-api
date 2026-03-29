@@ -15,7 +15,7 @@ func CheckError(err error, w http.ResponseWriter, r *http.Request) bool {
 	if awsErr, ok := err.(awserr.Error); ok {
 		switch awsErr.Code() {
 		case "AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch", "Forbidden":
-			responder.SendError(w, http.StatusUnauthorized, "Unauthorized", err)
+			responder.SendError(w, http.StatusForbidden, "Access denied", err)
 			return true
 		case "NoSuchBucket", "NoSuchKey", "NotFound":
 			responder.SendError(w, http.StatusNotFound, "Resource not found", err)

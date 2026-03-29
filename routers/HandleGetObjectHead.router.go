@@ -62,11 +62,9 @@ func handleBulkObjectHead(bucket string, w http.ResponseWriter, r *http.Request)
 	for _, key := range req.Keys {
 		head, err := aws.GetObjectHead(r.Context(), bucket, key)
 		if err != nil {
-			if aws.CheckError(err, w, r) {
-				return
-			}
-			responder.SendError(w, http.StatusInternalServerError, "Failed to get object head for key: "+key, err)
-			return
+			// Skip keys that are inaccessible or missing — don't abort the batch.
+			results = append(results, nil)
+			continue
 		}
 		results = append(results, head)
 	}
