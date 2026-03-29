@@ -11,7 +11,7 @@ var (
 	CryptoKey  = getEnvOrPanic("CRYPTO_KEY")
 
 	// Forta Authentication Configuration
-	FortaDomain             = getEnv("FORTA_DOMAIN", "https://login.appleby.cloud")
+	FortaDomain             = getEnvOrPanic("FORTA_DOMAIN")
 	FortaClientID           = getEnvOrPanic("FORTA_CLIENT_ID")
 	FortaClientSecret       = getEnvOrPanic("FORTA_CLIENT_SECRET")
 	FortaCallbackURL        = getEnvOrPanic("FORTA_CALLBACK_URL")
