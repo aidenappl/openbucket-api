@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/aidenappl/openbucket-api/tools"
 )
@@ -40,8 +41,13 @@ func GetSession(ctx context.Context) *tools.SessionClaims {
 // Token Handling
 func TokenAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// ignore session routes & health checks
-		if r.URL.Path == "/core/v1/sessions" || r.URL.Path == "/health" || r.URL.Path == "/" || r.URL.Path == "/core/v1/session" {
+		// ignore session routes, health checks, and forta auth routes
+		if r.URL.Path == "/core/v1/sessions" ||
+			r.URL.Path == "/health" ||
+			r.URL.Path == "/" ||
+			r.URL.Path == "/core/v1/session" ||
+			r.URL.Path == "/self" ||
+			strings.HasPrefix(r.URL.Path, "/forta/") {
 			next.ServeHTTP(w, r)
 			return
 		}

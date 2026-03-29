@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	forta "github.com/aidenappl/go-forta"
 	"github.com/aidenappl/openbucket-api/env"
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/routers"
@@ -12,6 +13,30 @@ import (
 )
 
 func main() {
+	// Initialize Forta authentication
+	if err := forta.Setup(forta.Config{
+		Domain:             env.FortaDomain,
+		ClientID:           env.FortaClientID,
+		ClientSecret:       env.FortaClientSecret,
+		CallbackURL:        env.FortaCallbackURL,
+		PostLoginRedirect:  env.FortaPostLoginRedirect,
+		PostLogoutRedirect: env.FortaPostLogoutRedirect,
+		CookieDomain:       env.FortaCookieDomain,
+		CookieInsecure:     env.FortaCookieInsecure,
+		JWTSigningKey:      env.FortaJWTSigningKey,
+		FetchUserOnProtect: env.FortaFetchUserOnProtect,
+		DisableAutoRefresh: env.FortaDisableAutoRefresh,
+	}); err != nil {
+		log.Fatal("forta setup:", err)
+	}
+
+	// Verify Forta API is reachable before accepting traffic
+	if err := forta.Ping(); err != nil {
+		log.Fatal("forta unreachable:", err)
+	}
+
+	log.Println("✅ Forta authentication initialized")
+
 	// Initialize the router
 	r := mux.NewRouter()
 
@@ -29,6 +54,17 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods(http.MethodGet)
+
+	// Forta Authentication Handlers
+	r.HandleFunc("/forta/login", forta.LoginHandler).Methods(http.MethodGet)
+	r.HandleFunc("/forta/callback", forta.CallbackHandler).Methods(http.MethodGet)
+	r.HandleFunc("/forta/logout", forta.LogoutHandler).Methods(http.MethodGet)
+
+	// Forta User Endpoints
+	// Check auth status (public - no auth required)
+	r.HandleFunc("/forta/check", routers.HandleCheckAuth).Methods(http.MethodGet)
+	// Get current user (protected - requires valid Forta session)
+	r.HandleFunc("/self", forta.Protected(routers.HandleGetCurrentUser)).Methods(http.MethodGet)
 
 	// Token authentication middleware
 	r.Use(middleware.TokenAuthMiddleware)
@@ -85,7 +121,7 @@ func main() {
 
 	// CORS Middleware
 	corsMiddleware := cors.New(cors.Options{
-		AllowedOrigins:   []string{
+		AllowedOrigins: []string{
 			"https://openbucket.local.appleby.cloud:3010",
 			"https://openbucket.appleby.cloud",
 		},

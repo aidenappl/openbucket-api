@@ -9,6 +9,19 @@ var (
 	Port       = getEnv("PORT", "8000")
 	JWT_SECRET = getEnvOrPanic("JWT_SECRET")
 	CryptoKey  = getEnvOrPanic("CRYPTO_KEY")
+
+	// Forta Authentication Configuration
+	FortaDomain             = getEnv("FORTA_DOMAIN", "https://login.appleby.cloud")
+	FortaClientID           = getEnvOrPanic("FORTA_CLIENT_ID")
+	FortaClientSecret       = getEnvOrPanic("FORTA_CLIENT_SECRET")
+	FortaCallbackURL        = getEnvOrPanic("FORTA_CALLBACK_URL")
+	FortaJWTSigningKey      = getEnvOrPanic("FORTA_JWT_SIGNING_KEY")
+	FortaPostLoginRedirect  = getEnv("FORTA_POST_LOGIN_REDIRECT", "/")
+	FortaPostLogoutRedirect = getEnv("FORTA_POST_LOGOUT_REDIRECT", "/")
+	FortaCookieDomain       = getEnv("FORTA_COOKIE_DOMAIN", "")
+	FortaCookieInsecure     = getEnv("FORTA_COOKIE_INSECURE", "false") == "true"
+	FortaFetchUserOnProtect = getEnv("FORTA_FETCH_USER_ON_PROTECT", "false") == "true"
+	FortaDisableAutoRefresh = getEnv("FORTA_DISABLE_AUTO_REFRESH", "false") == "true"
 )
 
 func getEnv(key string, fallback string) string {
