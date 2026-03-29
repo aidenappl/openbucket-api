@@ -22,7 +22,7 @@ var (
 	FortaPostLogoutRedirect = getEnv("FORTA_POST_LOGOUT_REDIRECT", "/")
 	FortaCookieDomain       = getEnv("FORTA_COOKIE_DOMAIN", "")
 	FortaCookieInsecure     = getEnv("FORTA_COOKIE_INSECURE", "false") == "true"
-	FortaFetchUserOnProtect = getEnv("FORTA_FETCH_USER_ON_PROTECT", "false") == "true"
+	FortaFetchUserOnProtect = getEnv("FORTA_FETCH_USER_ON_PROTECT", "true") == "true"
 	FortaDisableAutoRefresh = getEnv("FORTA_DISABLE_AUTO_REFRESH", "false") == "true"
 )
 
