@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	forta "github.com/aidenappl/go-forta"
+	"github.com/aidenappl/openbucket-api/cache"
 	"github.com/aidenappl/openbucket-api/db"
 	"github.com/aidenappl/openbucket-api/query"
 	"github.com/aidenappl/openbucket-api/tools"
@@ -64,10 +65,16 @@ func SessionMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		sess, err := query.GetSessionByID(db.DB, sessionID)
-		if err != nil {
-			http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
-			return
+		// Check session cache first
+		sess, cached := cache.GetSession(sessionID)
+		if !cached {
+			var err error
+			sess, err = query.GetSessionByID(db.DB, sessionID)
+			if err != nil {
+				http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
+				return
+			}
+			cache.SetSession(sessionID, sess)
 		}
 
 		if sess.FortaUserID != fortaID {
@@ -76,6 +83,7 @@ func SessionMiddleware(next http.Handler) http.Handler {
 		}
 
 		claims := &tools.SessionClaims{
+			SessionID:   sessionID,
 			FortaUserID: sess.FortaUserID,
 			BucketName:  sess.BucketName,
 			Nickname:    sess.Nickname,

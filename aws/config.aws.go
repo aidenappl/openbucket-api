@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	forta "github.com/aidenappl/go-forta"
+	"github.com/aidenappl/openbucket-api/cache"
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/tools"
 	"github.com/aws/aws-sdk-go/aws"
@@ -30,6 +31,7 @@ func GetSessionFromContext(ctx context.Context) (*tools.SessionClaims, error) {
 
 // CreateAWSSession creates an AWS session from context session claims.
 // It also verifies that the session belongs to the authenticated Forta user.
+// Sessions are cached by session ID for 5 minutes.
 func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 	sessionClaims, err := GetSessionFromContext(ctx)
 	if err != nil {
@@ -43,6 +45,11 @@ func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 	}
 	if sessionClaims.FortaUserID != fortaID {
 		return nil, fmt.Errorf("session does not belong to authenticated user")
+	}
+
+	// Check AWS session cache
+	if cached, ok := cache.GetAWSSession(sessionClaims.SessionID); ok {
+		return cached, nil
 	}
 
 	config := &aws.Config{
@@ -59,7 +66,14 @@ func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 		)
 	}
 
-	return session.NewSession(config)
+	sess, err := session.NewSession(config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache the session
+	cache.SetAWSSession(sessionClaims.SessionID, sess)
+	return sess, nil
 }
 
 // GetS3Client creates an S3 client from context
