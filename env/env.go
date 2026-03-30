@@ -14,6 +14,9 @@ var (
 	CryptoKey = getEnvOrPanic("CRYPTO_KEY")
 
 	// Forta Authentication Configuration
+	FortaAppDomain          = getEnvOrPanic("FORTA_APP_DOMAIN")
+	FortaAPIDomain          = getEnvOrPanic("FORTA_API_DOMAIN")
+	FortaLoginDomain        = getEnvOrPanic("FORTA_LOGIN_DOMAIN")
 	FortaClientID           = getEnvOrPanic("FORTA_CLIENT_ID")
 	FortaClientSecret       = getEnvOrPanic("FORTA_CLIENT_SECRET")
 	FortaCallbackURL        = getEnvOrPanic("FORTA_CALLBACK_URL")
