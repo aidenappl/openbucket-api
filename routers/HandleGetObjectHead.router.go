@@ -1,9 +1,11 @@
 package routers
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -58,16 +60,27 @@ func handleBulkObjectHead(bucket string, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var results []*s3.HeadObjectOutput
-	for _, key := range req.Keys {
-		head, err := aws.GetObjectHead(r.Context(), bucket, key)
-		if err != nil {
-			// Skip keys that are inaccessible or missing — don't abort the batch.
-			results = append(results, nil)
-			continue
-		}
-		results = append(results, head)
+	// Pre-allocate results slice to preserve order
+	results := make([]*s3.HeadObjectOutput, len(req.Keys))
+	var wg sync.WaitGroup
+
+	// Use the request context for all goroutines
+	ctx := r.Context()
+
+	for i, key := range req.Keys {
+		wg.Add(1)
+		go func(idx int, k string, ctx context.Context) {
+			defer wg.Done()
+			head, err := aws.GetObjectHead(ctx, bucket, k)
+			if err != nil {
+				// Skip keys that are inaccessible or missing — leave as nil
+				return
+			}
+			results[idx] = head
+		}(i, key, ctx)
 	}
+
+	wg.Wait()
 
 	responder.New(w, results, "Bulk object heads retrieved successfully")
 }
