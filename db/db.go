@@ -25,8 +25,13 @@ func PingDB(db *sql.DB) error {
 	return nil
 }
 
-var DB = func() *sql.DB {
-	db, err := sql.Open("mysql", env.CoreDBDSN)
+var DB *sql.DB
+
+const schema = "openbucket"
+
+func Init() {
+	dsn := env.CoreDBBase + "/" + schema + "?charset=utf8mb4&parseTime=True"
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		panic(fmt.Errorf("error opening database: %w", err))
 	}
@@ -36,8 +41,8 @@ var DB = func() *sql.DB {
 	db.SetMaxIdleConns(10)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	return db
-}()
+	DB = db
+}
 
 type Queryable interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)

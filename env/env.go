@@ -1,46 +1,73 @@
 package env
 
 import (
+	"context"
 	"fmt"
-	"os"
+
+	keyring "github.com/aidenappl/go-keyring"
 )
 
 var (
-	Port    = getEnv("PORT", "8000")
-	TLSCert = getEnv("TLS_CERT", "")
-	TLSKey  = getEnv("TLS_KEY", "")
+	Port    string
+	TLSCert string
+	TLSKey  string
 
-	CoreDBDSN = getEnvOrPanic("CORE_DB_DSN")
-	CryptoKey = getEnvOrPanic("CRYPTO_KEY")
+	CoreDBBase string
+	CryptoKey  string
 
 	// Forta Authentication Configuration
-	FortaAppDomain          = getEnvOrPanic("FORTA_APP_DOMAIN")
-	FortaAPIDomain          = getEnvOrPanic("FORTA_API_DOMAIN")
-	FortaLoginDomain        = getEnvOrPanic("FORTA_LOGIN_DOMAIN")
-	FortaClientID           = getEnvOrPanic("FORTA_CLIENT_ID")
-	FortaClientSecret       = getEnvOrPanic("FORTA_CLIENT_SECRET")
-	FortaCallbackURL        = getEnvOrPanic("FORTA_CALLBACK_URL")
-	FortaJWTSigningKey      = getEnvOrPanic("FORTA_JWT_SIGNING_KEY")
-	FortaPostLoginRedirect  = getEnv("FORTA_POST_LOGIN_REDIRECT", "/")
-	FortaPostLogoutRedirect = getEnv("FORTA_POST_LOGOUT_REDIRECT", "/")
-	FortaCookieDomain       = getEnv("FORTA_COOKIE_DOMAIN", "")
-	FortaCookieInsecure     = getEnv("FORTA_COOKIE_INSECURE", "false") == "true"
-	FortaFetchUserOnProtect = getEnv("FORTA_FETCH_USER_ON_PROTECT", "true") == "true"
-	FortaDisableAutoRefresh = getEnv("FORTA_DISABLE_AUTO_REFRESH", "false") == "true"
+	FortaAppDomain          string
+	FortaAPIDomain          string
+	FortaLoginDomain        string
+	FortaClientID           string
+	FortaClientSecret       string
+	FortaCallbackURL        string
+	FortaJWTSigningKey      string
+	FortaPostLoginRedirect  string
+	FortaPostLogoutRedirect string
+	FortaCookieDomain       string
+	FortaCookieInsecure     bool
+	FortaFetchUserOnProtect bool
+	FortaDisableAutoRefresh bool
 )
 
-func getEnv(key string, fallback string) string {
-	if v, ok := os.LookupEnv(key); ok {
-		return v
-	}
+// Init loads all configuration from Keyring. The three KEYRING_* env vars
+// (KEYRING_URL, KEYRING_ACCESS_KEY_ID, KEYRING_SECRET_ACCESS_KEY) must be
+// set in the process environment. All application secrets are fetched from
+// the Keyring API. Call this once at the top of main() before any other
+// initialisation.
+func Init() {
+	fmt.Println("Loading configuration from Keyring...")
+	ctx := context.Background()
 
-	return fallback
+	Port = getOr(ctx, "PORT", "8000")
+	TLSCert = getOr(ctx, "TLS_CERT", "")
+	TLSKey = getOr(ctx, "TLS_KEY", "")
+
+	CoreDBBase = keyring.MustGet("CORE_DB_DSN")
+	CryptoKey = keyring.MustGet("CRYPTO_KEY")
+
+	FortaAppDomain = keyring.MustGet("OB_FORTA_APP_DOMAIN")
+	FortaAPIDomain = keyring.MustGet("FORTA_API_DOMAIN")
+	FortaLoginDomain = keyring.MustGet("FORTA_LOGIN_DOMAIN")
+	FortaClientID = keyring.MustGet("OB_FORTA_CLIENT_ID")
+	FortaClientSecret = keyring.MustGet("OB_FORTA_CLIENT_SECRET")
+	FortaCallbackURL = keyring.MustGet("OB_FORTA_CALLBACK_URL")
+	FortaJWTSigningKey = keyring.MustGet("FORTA_JWT_SIGNING_KEY")
+	FortaPostLoginRedirect = getOr(ctx, "FORTA_POST_LOGIN_REDIRECT", "/")
+	FortaPostLogoutRedirect = getOr(ctx, "FORTA_POST_LOGOUT_REDIRECT", "/")
+	FortaCookieDomain = getOr(ctx, "FORTA_COOKIE_DOMAIN", "")
+	FortaCookieInsecure = getOr(ctx, "FORTA_COOKIE_INSECURE", "false") == "true"
+	FortaFetchUserOnProtect = getOr(ctx, "FORTA_FETCH_USER_ON_PROTECT", "true") == "true"
+	FortaDisableAutoRefresh = getOr(ctx, "FORTA_DISABLE_AUTO_REFRESH", "false") == "true"
+	fmt.Println("✅ Configuration loaded")
 }
 
-func getEnvOrPanic(key string) string {
-	value, ok := os.LookupEnv(key)
-	if !ok {
-		panic(fmt.Sprintf("❌ missing required environment variable: '%v'\n", key))
+// getOr returns the keyring value for key, or fallback if the key is absent.
+func getOr(ctx context.Context, key, fallback string) string {
+	v, err := keyring.Get(ctx, key)
+	if err != nil {
+		return fallback
 	}
-	return value
+	return v
 }

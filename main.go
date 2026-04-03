@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -14,7 +15,11 @@ import (
 )
 
 func main() {
+	// Load secrets from Keyring (if configured) and read env vars
+	env.Init()
+
 	// Initialize Forta authentication
+	fmt.Print("Connecting to Forta...")
 	if err := forta.Setup(forta.Config{
 		AppDomain:          env.FortaAppDomain,
 		APIDomain:          env.FortaAPIDomain,
@@ -36,9 +41,12 @@ func main() {
 	// Verify Forta API is reachable before accepting traffic
 	if err := forta.Ping(); err != nil {
 		log.Fatal("forta unreachable:", err)
+	} else {
+		fmt.Println("✅ Done")
 	}
 
-	log.Println("✅ Forta authentication initialized")
+	// Initialize the database connection
+	db.Init()
 
 	// Connect to the database
 	if err := db.PingDB(db.DB); err != nil {
