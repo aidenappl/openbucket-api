@@ -11,10 +11,8 @@ import (
 	"github.com/aidenappl/openbucket-api/env"
 )
 
-var secretKey = []byte(env.CryptoKey) // Replace with your actual secret key
-
 func Encrypt(text string) (string, error) {
-	block, err := aes.NewCipher(secretKey)
+	block, err := aes.NewCipher([]byte(env.CryptoKey))
 	if err != nil {
 		return "", err
 	}
@@ -39,7 +37,7 @@ func Decrypt(encrypted string) (string, error) {
 		return "", err
 	}
 
-	block, err := aes.NewCipher(secretKey)
+	block, err := aes.NewCipher([]byte(env.CryptoKey))
 	if err != nil {
 		return "", err
 	}
