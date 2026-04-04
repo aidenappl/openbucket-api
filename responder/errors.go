@@ -13,7 +13,11 @@ type ErrorResponse struct {
 }
 
 func SendError(w http.ResponseWriter, status int, errMessage string, err ...error) {
-	log.Println(status, " Error response:", errMessage)
+	if len(err) > 0 && err[0] != nil {
+		log.Println(status, " Error response:", errMessage, err[0].Error())
+	} else {
+		log.Println(status, " Error response:", errMessage)
+	}
 	errResp := ErrorResponse{
 		Error:        nil,
 		ErrorMessage: errMessage,
