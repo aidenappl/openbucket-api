@@ -51,8 +51,11 @@ func main() {
 	// Connect to the database
 	if err := db.PingDB(db.DB); err != nil {
 		log.Fatal("database connect:", err)
+	} else {
+		fmt.Println("✅ Done")
 	}
 
+	fmt.Println()
 	// Initialize the router
 	r := mux.NewRouter()
 

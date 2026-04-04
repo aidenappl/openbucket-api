@@ -16,12 +16,10 @@ const (
 )
 
 func PingDB(db *sql.DB) error {
-	fmt.Print("Connecting to OpenBucket DB...")
 	if err := db.Ping(); err != nil {
 		fmt.Println(" ❌ Failed")
 		return err
 	}
-	fmt.Println(" ✅ Done")
 	return nil
 }
 
@@ -30,6 +28,7 @@ var DB *sql.DB
 const schema = "openbucket"
 
 func Init() {
+	fmt.Print("Connecting to OpenBucket DB... ")
 	dsn := env.CoreDBBase + "/" + schema + "?charset=utf8mb4&parseTime=True"
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {

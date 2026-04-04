@@ -60,7 +60,7 @@ func Init() {
 	FortaCookieInsecure = getOr(ctx, "FORTA_COOKIE_INSECURE", "false") == "true"
 	FortaFetchUserOnProtect = getOr(ctx, "FORTA_FETCH_USER_ON_PROTECT", "true") == "true"
 	FortaDisableAutoRefresh = getOr(ctx, "FORTA_DISABLE_AUTO_REFRESH", "false") == "true"
-	fmt.Println("Keyring... ✅ Done")
+	fmt.Println("Connecting to Keyring... ✅ Done")
 }
 
 // getOr returns the keyring value for key, or fallback if the key is absent.
