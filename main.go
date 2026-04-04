@@ -19,7 +19,7 @@ func main() {
 	env.Init()
 
 	// Initialize Forta authentication
-	fmt.Print("Connecting to Forta...")
+	fmt.Print("Connecting to Forta... ")
 	if err := forta.Setup(forta.Config{
 		AppDomain:          env.FortaAppDomain,
 		APIDomain:          env.FortaAPIDomain,
@@ -56,9 +56,6 @@ func main() {
 	// Initialize the router
 	r := mux.NewRouter()
 
-	// Request logger
-	r.Use(middleware.LoggingMiddleware)
-
 	// Base API Endpoint
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -70,6 +67,9 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods(http.MethodGet)
+
+	// Request logger
+	r.Use(middleware.LoggingMiddleware)
 
 	// Forta Authentication Handlers
 	r.HandleFunc("/forta/login", forta.LoginHandler).Methods(http.MethodGet)
