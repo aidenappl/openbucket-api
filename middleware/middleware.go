@@ -21,6 +21,10 @@ const SessionContextKey contextKey = "session"
 // LoggingMiddleware logs the request method and URI.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.RequestURI == "/" || r.RequestURI == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		log.Println(r.Method, r.RequestURI)
 		next.ServeHTTP(w, r)
 	})
@@ -92,15 +96,21 @@ func SessionMiddleware(next http.Handler) http.Handler {
 		}
 		if sess.AccessKey != nil {
 			dec, err := tools.Decrypt(*sess.AccessKey)
-			if err == nil {
-				claims.AccessKey = &dec
+			if err != nil {
+				log.Printf("failed to decrypt access key for session %d: %v", sessionID, err)
+				http.Error(w, `{"error":"failed to decrypt session credentials"}`, http.StatusInternalServerError)
+				return
 			}
+			claims.AccessKey = &dec
 		}
 		if sess.SecretKey != nil {
 			dec, err := tools.Decrypt(*sess.SecretKey)
-			if err == nil {
-				claims.SecretKey = &dec
+			if err != nil {
+				log.Printf("failed to decrypt secret key for session %d: %v", sessionID, err)
+				http.Error(w, `{"error":"failed to decrypt session credentials"}`, http.StatusInternalServerError)
+				return
 			}
+			claims.SecretKey = &dec
 		}
 
 		ctx := context.WithValue(r.Context(), SessionContextKey, claims)
