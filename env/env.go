@@ -29,6 +29,7 @@ var (
 	FortaCookieInsecure     bool
 	FortaFetchUserOnProtect bool
 	FortaDisableAutoRefresh bool
+	FortaEnforceGrants      bool
 )
 
 // Init loads all configuration from Keyring. The three KEYRING_* env vars
@@ -60,6 +61,7 @@ func Init() {
 	FortaCookieInsecure = getOr(ctx, "FORTA_COOKIE_INSECURE", "false") == "true"
 	FortaFetchUserOnProtect = getOr(ctx, "FORTA_FETCH_USER_ON_PROTECT", "true") == "true"
 	FortaDisableAutoRefresh = getOr(ctx, "FORTA_DISABLE_AUTO_REFRESH", "false") == "true"
+	FortaEnforceGrants = getOr(ctx, "FORTA_ENFORCE_GRANTS", "false") == "true"
 	fmt.Println("Connecting to Keyring... ✅ Done")
 }
 

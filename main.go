@@ -34,6 +34,7 @@ func main() {
 		JWTSigningKey:      env.FortaJWTSigningKey,
 		FetchUserOnProtect: env.FortaFetchUserOnProtect,
 		DisableAutoRefresh: env.FortaDisableAutoRefresh,
+		EnforceGrants:      env.FortaEnforceGrants,
 	}); err != nil {
 		log.Fatal("forta setup:", err)
 	}
