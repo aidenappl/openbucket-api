@@ -23,9 +23,7 @@ func SendError(w http.ResponseWriter, status int, errMessage string, err ...erro
 		ErrorMessage: errMessage,
 		ErrorCode:    1000,
 	}
-	if len(err) > 0 && err[0] != nil {
-		errResp.Error = err[0].Error()
-	}
+	// Internal error details are logged above but not exposed to the client.
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

@@ -3,7 +3,6 @@ package aws
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -28,7 +27,7 @@ func PresignObject(ctx context.Context, bucket, key string, expiration int64) (s
 	// Generate a presigned URL valid for the specified expiration time
 	urlStr, err := req.Presign(time.Duration(expiration) * time.Second)
 	if err != nil {
-		log.Fatalf("Failed to sign request: %v", err)
+		return "", fmt.Errorf("failed to sign request: %w", err)
 	}
 
 	return urlStr, nil

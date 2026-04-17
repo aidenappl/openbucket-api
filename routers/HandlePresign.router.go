@@ -3,6 +3,7 @@ package routers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -31,6 +32,11 @@ func HandlePresign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(req.Key, "..") {
+		responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
+		return
+	}
+
 	// Optional expiration time in seconds
 	expiration := r.URL.Query().Get("expiration")
 	if expiration != "" {
@@ -43,6 +49,13 @@ func HandlePresign(w http.ResponseWriter, r *http.Request) {
 		req.Expiration = int64(intExp)
 	} else {
 		req.Expiration = 3600 // Default to 1 hour if not specified (seconds)
+	}
+
+	if req.Expiration > 86400 {
+		req.Expiration = 86400 // cap at 24 hours
+	}
+	if req.Expiration <= 0 {
+		req.Expiration = 3600 // default 1 hour
 	}
 
 	// Handle the presigned URL generation logic here

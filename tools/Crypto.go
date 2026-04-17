@@ -6,12 +6,17 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/aidenappl/openbucket-api/env"
 )
 
 func Encrypt(text string) (string, error) {
+	if len(env.CryptoKey) != 32 {
+		return "", fmt.Errorf("CRYPTO_KEY must be exactly 32 bytes for AES-256, got %d", len(env.CryptoKey))
+	}
+
 	block, err := aes.NewCipher([]byte(env.CryptoKey))
 	if err != nil {
 		return "", err

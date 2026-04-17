@@ -18,14 +18,17 @@ COPY . .
 RUN go build -ldflags="-w -s" -o /bin/app
 
 # Stage 2: Minimal runtime container
-FROM alpine:latest
+FROM alpine:3.21
 
 # Copy only the compiled binary
 COPY --from=builder /bin/app /app
 
+# Create non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
 # Set a default port environment variable
 ENV PORT=8080
-ENV ROOTED_DB=""
 EXPOSE 8080
 
 # Run the app

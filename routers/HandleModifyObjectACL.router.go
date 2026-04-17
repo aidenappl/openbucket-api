@@ -3,6 +3,7 @@ package routers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/aidenappl/openbucket-api/aws"
@@ -45,6 +46,10 @@ func HandleModifyObjectACL(w http.ResponseWriter, r *http.Request) {
 
 	if req.Bucket == "" || req.Key == "" || req.ACL == "" {
 		responder.ErrMissingParam(w, "bucket, key, or acl")
+		return
+	}
+	if strings.Contains(req.Key, "..") {
+		responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
 		return
 	}
 
@@ -92,6 +97,18 @@ func handleBulkModifyObjectACL(w http.ResponseWriter, r *http.Request) {
 	if bucket == "" || len(req.Keys) == 0 || req.ACL == "" {
 		responder.ErrMissingParam(w, "bucket, keys, or acl")
 		return
+	}
+
+	const maxBatchSize = 100
+	if len(req.Keys) > maxBatchSize {
+		responder.SendError(w, http.StatusBadRequest, "batch size exceeds maximum of 100", nil)
+		return
+	}
+	for _, k := range req.Keys {
+		if strings.Contains(k, "..") {
+			responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
+			return
+		}
 	}
 
 	switch req.ACL {

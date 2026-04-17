@@ -3,6 +3,7 @@ package routers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -29,6 +30,10 @@ func HandleUpdateFolder(w http.ResponseWriter, r *http.Request) {
 
 	if req.Bucket == "" || req.Folder == "" || req.Name == "" {
 		responder.ErrMissingParam(w, "bucket, folder or name")
+		return
+	}
+	if strings.Contains(req.Folder, "..") || strings.Contains(req.Name, "..") {
+		responder.SendError(w, http.StatusBadRequest, "invalid folder: path traversal not allowed", nil)
 		return
 	}
 

@@ -1,8 +1,11 @@
 package routers
 
 import (
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -21,6 +24,11 @@ func HandleGetObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(key, "..") {
+		responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
+		return
+	}
+
 	res, err := aws.GetObject(r.Context(), bucket, key)
 
 	if err != nil {
@@ -30,6 +38,17 @@ func HandleGetObject(w http.ResponseWriter, r *http.Request) {
 		responder.SendError(w, http.StatusInternalServerError, "Failed to get object", err)
 		return
 	}
+	if res.Body != nil {
+		defer res.Body.Close()
+	}
 
-	responder.New(w, res, "Object retrieved successfully")
+	// Stream the object body directly to the client
+	if res.ContentType != nil {
+		w.Header().Set("Content-Type", *res.ContentType)
+	}
+	if res.ContentLength != nil {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", *res.ContentLength))
+	}
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, res.Body)
 }

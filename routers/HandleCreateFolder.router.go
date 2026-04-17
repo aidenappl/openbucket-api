@@ -3,6 +3,7 @@ package routers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -27,6 +28,11 @@ func HandleCreateFolder(w http.ResponseWriter, r *http.Request) {
 
 	if req.Bucket == "" || req.Folder == "" {
 		responder.ErrMissingParam(w, "bucket or folder")
+		return
+	}
+
+	if strings.Contains(req.Folder, "..") {
+		responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
 		return
 	}
 

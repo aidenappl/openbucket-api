@@ -2,6 +2,7 @@ package routers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -26,6 +27,11 @@ func HandleDeleteFolder(w http.ResponseWriter, r *http.Request) {
 	req.Folder = r.URL.Query().Get("folder") // From the URL parameters
 	if req.Folder == "" {
 		responder.ErrMissingParam(w, "folder")
+		return
+	}
+
+	if strings.Contains(req.Folder, "..") {
+		responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
 		return
 	}
 

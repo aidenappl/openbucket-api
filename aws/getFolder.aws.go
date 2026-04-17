@@ -18,25 +18,26 @@ func GetFolder(ctx context.Context, bucket string, prefix string) ([]Object, err
 		return nil, fmt.Errorf("failed to get S3 client: %w", err)
 	}
 
-	out, err := s3Client.ListObjectsV2(&s3.ListObjectsV2Input{
+	var objects []Object
+	err = s3Client.ListObjectsV2Pages(&s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
 		Prefix: aws.String(prefix),
+	}, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
+		for _, item := range page.Contents {
+			if *item.Key == prefix {
+				// skip the placeholder "folder" object itself
+				continue
+			}
+			objects = append(objects, Object{
+				Key:          *item.Key,
+				Size:         *item.Size,
+				LastModified: item.LastModified.String(),
+			})
+		}
+		return true
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list objects in bucket %s with prefix %s: %w", bucket, prefix, err)
-	}
-
-	var objects []Object
-	for _, item := range out.Contents {
-		if *item.Key == prefix {
-			// skip the placeholder "folder" object itself
-			continue
-		}
-		objects = append(objects, Object{
-			Key:          *item.Key,
-			Size:         *item.Size,
-			LastModified: item.LastModified.String(),
-		})
 	}
 
 	return objects, nil

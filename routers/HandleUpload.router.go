@@ -11,6 +11,15 @@ import (
 	"github.com/aidenappl/openbucket-api/responder"
 )
 
+func containsPathTraversal(keys ...string) bool {
+	for _, k := range keys {
+		if strings.Contains(k, "..") {
+			return true
+		}
+	}
+	return false
+}
+
 type HandleUploadRequest struct {
 	Bucket string `json:"bucket"`
 	Key    string `json:"key"`
@@ -58,6 +67,11 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 	req.Key = r.FormValue("key")
 	if req.Key == "" {
 		req.Key = header.Filename // Use the original filename if no key is provided
+	}
+
+	if containsPathTraversal(req.Key, req.Prefix) {
+		responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
+		return
 	}
 
 	err = aws.Upload(r.Context(), aws.UploadRequest{

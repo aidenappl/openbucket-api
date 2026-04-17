@@ -2,6 +2,7 @@ package routers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -16,6 +17,10 @@ func HandleGetObjectACL(w http.ResponseWriter, r *http.Request) {
 
 	if bucket == "" || key == "" {
 		responder.ErrMissingParam(w, "bucket or key")
+		return
+	}
+	if strings.Contains(key, "..") {
+		responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
 		return
 	}
 

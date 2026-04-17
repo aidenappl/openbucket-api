@@ -2,6 +2,7 @@ package routers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -35,6 +36,11 @@ func HandleRenameObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(req.Key, "..") || strings.Contains(req.NewKey, "..") {
+		responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
+		return
+	}
+
 	err := aws.RenameObject(r.Context(), req.Bucket, req.Key, req.NewKey)
 	if err != nil {
 		if aws.CheckError(err, w, r) {
@@ -44,5 +50,5 @@ func HandleRenameObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	responder.New(w, err, "Object renamed successfully")
+	responder.New(w, nil, "Object renamed successfully")
 }

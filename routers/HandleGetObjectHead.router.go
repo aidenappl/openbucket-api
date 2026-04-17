@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/aidenappl/openbucket-api/aws"
@@ -28,6 +29,10 @@ func HandleGetObjectHead(w http.ResponseWriter, r *http.Request) {
 	if bucket == "" || key == "" {
 		log.Println("Missing bucket or key parameter")
 		responder.ErrMissingParam(w, "bucket or key")
+		return
+	}
+	if strings.Contains(key, "..") {
+		responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
 		return
 	}
 
@@ -58,6 +63,18 @@ func handleBulkObjectHead(bucket string, w http.ResponseWriter, r *http.Request)
 	if bucket == "" || len(req.Keys) == 0 {
 		responder.ErrMissingParam(w, "bucket or keys")
 		return
+	}
+
+	const maxBatchSize = 100
+	if len(req.Keys) > maxBatchSize {
+		responder.SendError(w, http.StatusBadRequest, "batch size exceeds maximum of 100", nil)
+		return
+	}
+	for _, k := range req.Keys {
+		if strings.Contains(k, "..") {
+			responder.SendError(w, http.StatusBadRequest, "invalid key: path traversal not allowed", nil)
+			return
+		}
 	}
 
 	// Pre-allocate results slice to preserve order

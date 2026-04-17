@@ -14,6 +14,13 @@ import (
 	"github.com/rs/cors"
 )
 
+func maxBodyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 11<<20) // 11MB (10MB file + multipart overhead)
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	// Load secrets from Keyring (if configured) and read env vars
 	env.Init()
@@ -71,6 +78,9 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods(http.MethodGet)
+
+	// Request body size limit
+	r.Use(maxBodyMiddleware)
 
 	// Request logger
 	r.Use(middleware.LoggingMiddleware)
