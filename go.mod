@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/aidenappl/go-forta v1.1.1
+	github.com/aidenappl/go-forta v1.1.2
 	github.com/aidenappl/go-keyring v1.0.2
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/go-sql-driver/mysql v1.9.3
