@@ -31,7 +31,7 @@ func Upload(ctx context.Context, req UploadRequest) error {
 
 	request, _ := s3Client.PutObjectRequest(input)
 
-	if req.Overwrite == nil || !*req.Overwrite {
+	if req.Overwrite != nil && !*req.Overwrite {
 		request.HTTPRequest.Header.Set("If-None-Match", "*")
 	}
 
