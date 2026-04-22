@@ -9,9 +9,13 @@ import (
 )
 
 func HandleListFolders(w http.ResponseWriter, r *http.Request) {
-	// Parse query parameters
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
 	vars := r.URL.Query()
-	bucket := middleware.GetSession(r.Context()).BucketName // From session context
+	bucket := session.BucketName
 	prefix := vars.Get("prefix")
 	if bucket == "" {
 		responder.ErrMissingParam(w, "bucket")

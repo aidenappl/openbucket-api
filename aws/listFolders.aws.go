@@ -21,9 +21,11 @@ func ListFolders(ctx context.Context, bucket string, prefix string) ([]string, e
 		Delimiter: aws.String("/"), // key for folders
 	}, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, cp := range page.CommonPrefixes {
-			folders = append(folders, *cp.Prefix)
+			if cp != nil && cp.Prefix != nil {
+				folders = append(folders, *cp.Prefix)
+			}
 		}
-		return true
+		return !lastPage && len(folders) < 10000
 	})
 	if err != nil {
 		return nil, err

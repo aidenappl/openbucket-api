@@ -13,7 +13,7 @@ import (
 
 func containsPathTraversal(keys ...string) bool {
 	for _, k := range keys {
-		if strings.Contains(k, "..") {
+		if strings.Contains(k, "..") || strings.HasPrefix(k, "/") || strings.ContainsAny(k, "\x00") {
 			return true
 		}
 	}
@@ -50,7 +50,12 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Bucket = middleware.GetSession(r.Context()).BucketName
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+	req.Bucket = session.BucketName
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")
 		return

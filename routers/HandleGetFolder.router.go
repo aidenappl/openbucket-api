@@ -17,7 +17,12 @@ type HandleGetFolderRequest struct {
 func HandleGetFolder(w http.ResponseWriter, r *http.Request) {
 	var req HandleGetFolderRequest
 	// Parse variables
-	req.Bucket = middleware.GetSession(r.Context()).BucketName // From session context
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+	req.Bucket = session.BucketName
 	req.Folder = r.URL.Query().Get("folder")
 	if req.Bucket == "" || req.Folder == "" {
 		responder.ErrMissingParam(w, "bucket or folder")

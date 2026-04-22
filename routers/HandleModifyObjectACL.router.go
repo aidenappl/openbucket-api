@@ -31,6 +31,12 @@ func HandleModifyObjectACL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+
 	var req HandleModifyObjectACLRequest
 
 	// Parse the request body
@@ -40,7 +46,7 @@ func HandleModifyObjectACL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Bucket = middleware.GetSession(r.Context()).BucketName
+	req.Bucket = session.BucketName
 
 	req.Key = r.URL.Query().Get("key")
 
@@ -86,7 +92,12 @@ type bulkACLResult struct {
 }
 
 func handleBulkModifyObjectACL(w http.ResponseWriter, r *http.Request) {
-	bucket := middleware.GetSession(r.Context()).BucketName
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+	bucket := session.BucketName
 
 	var req handleBulkModifyObjectACLRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -123,13 +134,14 @@ func handleBulkModifyObjectACL(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	ctx := r.Context()
 
+	acl := string(req.ACL)
 	for i, key := range req.Keys {
 		wg.Add(1)
-		go func(idx int, k string) {
+		go func(idx int, k string, b string, a string) {
 			defer wg.Done()
-			err := aws.ModifyObjectACL(ctx, bucket, k, string(req.ACL))
+			err := aws.ModifyObjectACL(ctx, b, k, a)
 			results[idx] = bulkACLResult{Key: k, Success: err == nil}
-		}(i, key)
+		}(i, key, bucket, acl)
 	}
 
 	wg.Wait()

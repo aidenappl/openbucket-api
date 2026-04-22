@@ -3,6 +3,7 @@ package routers
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 
 	forta "github.com/aidenappl/go-forta"
 	"github.com/aidenappl/openbucket-api/db"
@@ -35,6 +36,13 @@ func HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	if body.BucketName == "" || body.Region == "" || body.Endpoint == "" {
 		responder.SendError(w, http.StatusBadRequest, "Missing required fields", nil)
+		return
+	}
+
+	// Validate endpoint is a valid HTTP(S) URL
+	epURL, err := url.Parse(body.Endpoint)
+	if err != nil || (epURL.Scheme != "http" && epURL.Scheme != "https") || epURL.Host == "" {
+		responder.SendError(w, http.StatusBadRequest, "endpoint must be a valid HTTP(S) URL", nil)
 		return
 	}
 

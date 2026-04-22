@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -21,24 +22,30 @@ func RenameFolder(ctx context.Context, bucket, sourcePrefix, destPrefix string) 
 		return fmt.Errorf("failed to get S3 client: %w", err)
 	}
 
+	var errs []string
+
 	// List all objects under the source prefix
 	err = s3Client.ListObjectsV2Pages(&s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
 		Prefix: aws.String(sourcePrefix),
 	}, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, obj := range page.Contents {
+			if obj == nil || obj.Key == nil {
+				continue
+			}
 			// Derive new key
 			oldKey := *obj.Key
 			newKey := strings.Replace(oldKey, sourcePrefix, destPrefix, 1)
 
-			// Copy object
+			// Copy object — URL-encode the source key for the CopySource header
+			encodedSource := url.PathEscape(fmt.Sprintf("%s/%s", bucket, oldKey))
 			_, err := s3Client.CopyObject(&s3.CopyObjectInput{
 				Bucket:     aws.String(bucket),
-				CopySource: aws.String(fmt.Sprintf("%s/%s", bucket, oldKey)),
+				CopySource: aws.String(encodedSource),
 				Key:        aws.String(newKey),
 			})
 			if err != nil {
-				fmt.Printf("Failed to copy %s to %s: %v\n", oldKey, newKey, err)
+				errs = append(errs, fmt.Sprintf("copy %s→%s: %v", oldKey, newKey, err))
 				continue
 			}
 
@@ -48,7 +55,7 @@ func RenameFolder(ctx context.Context, bucket, sourcePrefix, destPrefix string) 
 				Key:    aws.String(newKey),
 			})
 			if err != nil {
-				fmt.Printf("Object %s not confirmed at destination: %v\n", newKey, err)
+				errs = append(errs, fmt.Sprintf("confirm %s: %v", newKey, err))
 				continue
 			}
 
@@ -58,7 +65,7 @@ func RenameFolder(ctx context.Context, bucket, sourcePrefix, destPrefix string) 
 				Key:    aws.String(oldKey),
 			})
 			if err != nil {
-				fmt.Printf("Failed to delete original %s: %v\n", oldKey, err)
+				errs = append(errs, fmt.Sprintf("delete %s: %v", oldKey, err))
 				continue
 			}
 		}
@@ -67,6 +74,9 @@ func RenameFolder(ctx context.Context, bucket, sourcePrefix, destPrefix string) 
 
 	if err != nil {
 		return fmt.Errorf("failed to rename folder: %w", err)
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("rename folder completed with %d errors: %s", len(errs), strings.Join(errs, "; "))
 	}
 
 	return nil

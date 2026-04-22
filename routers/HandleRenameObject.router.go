@@ -16,9 +16,15 @@ type HandleRenameObjectRequest struct {
 }
 
 func HandleRenameObject(w http.ResponseWriter, r *http.Request) {
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+
 	var req HandleRenameObjectRequest
 
-	req.Bucket = middleware.GetSession(r.Context()).BucketName
+	req.Bucket = session.BucketName
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")
 		return

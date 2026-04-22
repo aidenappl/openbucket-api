@@ -15,8 +15,12 @@ import (
 )
 
 func HandleGetObjectHead(w http.ResponseWriter, r *http.Request) {
-	//  Get mux variables
-	bucket := middleware.GetSession(r.Context()).BucketName
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+	bucket := session.BucketName
 
 	q := r.URL.Query()
 	if _, ok := q["bulk"]; ok {

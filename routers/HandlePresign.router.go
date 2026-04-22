@@ -18,9 +18,15 @@ type HandlePresignRequest struct {
 }
 
 func HandlePresign(w http.ResponseWriter, r *http.Request) {
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+
 	var req HandlePresignRequest
 
-	req.Bucket = middleware.GetSession(r.Context()).BucketName
+	req.Bucket = session.BucketName
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")
 		return
@@ -51,11 +57,8 @@ func HandlePresign(w http.ResponseWriter, r *http.Request) {
 		req.Expiration = 3600 // Default to 1 hour if not specified (seconds)
 	}
 
-	if req.Expiration > 86400 {
-		req.Expiration = 86400 // cap at 24 hours
-	}
-	if req.Expiration <= 0 {
-		req.Expiration = 3600 // default 1 hour
+	if req.Expiration <= 0 || req.Expiration > 86400 {
+		req.Expiration = 3600 // default 1 hour, cap at 24 hours
 	}
 
 	// Handle the presigned URL generation logic here

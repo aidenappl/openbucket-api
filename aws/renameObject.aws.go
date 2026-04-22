@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -23,7 +24,7 @@ func RenameObject(ctx context.Context, bucket, sourceKey, destinationKey string)
 	// Step 1: Copy the object
 	_, err = s3Client.CopyObject(&s3.CopyObjectInput{
 		Bucket:     aws.String(bucket),
-		CopySource: aws.String(fmt.Sprintf("%s/%s", bucket, sourceKey)),
+		CopySource: aws.String(url.PathEscape(fmt.Sprintf("%s/%s", bucket, sourceKey))),
 		Key:        aws.String(destinationKey),
 	})
 	if err != nil {

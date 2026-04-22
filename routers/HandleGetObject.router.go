@@ -14,7 +14,12 @@ import (
 
 func HandleGetObject(w http.ResponseWriter, r *http.Request) {
 	//  Get mux variables
-	bucket := middleware.GetSession(r.Context()).BucketName
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+	bucket := session.BucketName
 
 	key := r.URL.Query().Get("key") // Object key from query parameters
 

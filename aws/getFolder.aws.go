@@ -24,17 +24,28 @@ func GetFolder(ctx context.Context, bucket string, prefix string) ([]Object, err
 		Prefix: aws.String(prefix),
 	}, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, item := range page.Contents {
+			if item == nil || item.Key == nil {
+				continue
+			}
 			if *item.Key == prefix {
 				// skip the placeholder "folder" object itself
 				continue
 			}
+			var size int64
+			if item.Size != nil {
+				size = *item.Size
+			}
+			var lastModified string
+			if item.LastModified != nil {
+				lastModified = item.LastModified.String()
+			}
 			objects = append(objects, Object{
 				Key:          *item.Key,
-				Size:         *item.Size,
-				LastModified: item.LastModified.String(),
+				Size:         size,
+				LastModified: lastModified,
 			})
 		}
-		return true
+		return len(objects) < 10000
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list objects in bucket %s with prefix %s: %w", bucket, prefix, err)

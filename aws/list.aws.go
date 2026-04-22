@@ -47,7 +47,7 @@ func ListObjects(ctx context.Context, bucket, prefix string) ([]*s3.Object, erro
 				}
 			}
 		}
-		return !lastPage
+		return !lastPage && len(objects) < 10000
 	})
 
 	if err != nil {

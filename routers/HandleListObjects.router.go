@@ -15,10 +15,15 @@ type HandleListObjectsRequest struct {
 }
 
 func HandleListObjects(w http.ResponseWriter, r *http.Request) {
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+
 	var req HandleListObjectsRequest
 
-	// Parse mux variables
-	req.Bucket = middleware.GetSession(r.Context()).BucketName
+	req.Bucket = session.BucketName
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")
 		return

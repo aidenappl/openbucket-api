@@ -154,7 +154,7 @@ func main() {
 			"https://openbucket.appleby.cloud",
 		},
 		AllowCredentials: true,
-		AllowedHeaders:   []string{"*"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Requested-With", "Accept"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 	})
 

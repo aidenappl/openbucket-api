@@ -17,7 +17,12 @@ type HandleDeleteFolderRequest struct {
 func HandleDeleteFolder(w http.ResponseWriter, r *http.Request) {
 	var req HandleDeleteFolderRequest
 
-	req.Bucket = middleware.GetSession(r.Context()).BucketName // From session context
+	session := middleware.GetSession(r.Context())
+	if session == nil {
+		responder.SendError(w, http.StatusUnauthorized, "session not found")
+		return
+	}
+	req.Bucket = session.BucketName
 
 	if req.Bucket == "" {
 		responder.ErrMissingParam(w, "bucket")

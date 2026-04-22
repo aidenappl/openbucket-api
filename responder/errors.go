@@ -27,7 +27,9 @@ func SendError(w http.ResponseWriter, status int, errMessage string, err ...erro
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(errResp)
+	if encErr := json.NewEncoder(w).Encode(errResp); encErr != nil {
+		log.Printf("failed to encode error response: %v", encErr)
+	}
 }
 
 func SendErrorWithParams(w http.ResponseWriter, err string, status int, errorCode *int, errorMessage *string) {
@@ -47,7 +49,9 @@ func SendErrorWithParams(w http.ResponseWriter, err string, status int, errorCod
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(errResp)
+	if encErr := json.NewEncoder(w).Encode(errResp); encErr != nil {
+		log.Printf("failed to encode error response: %v", encErr)
+	}
 }
 
 func ErrMissingParam(w http.ResponseWriter, field string) {
