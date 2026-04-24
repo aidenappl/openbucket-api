@@ -62,7 +62,7 @@ func NewRefreshToken(userID int) (string, time.Time, error) {
 
 func ValidateToken(tokenStr string) (*Claims, error) {
 	token, err := jwtlib.ParseWithClaims(tokenStr, &Claims{}, func(t *jwtlib.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwtlib.SigningMethodHMAC); !ok {
+		if t.Method != jwtlib.SigningMethodHS512 {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(env.JWTSigningKey), nil

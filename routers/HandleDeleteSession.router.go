@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/aidenappl/openbucket-api/cache"
 	"github.com/aidenappl/openbucket-api/db"
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/query"
@@ -34,5 +35,6 @@ func HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cache.InvalidateAllForSession(sessionID)
 	responder.New(w, nil, "session deleted")
 }
