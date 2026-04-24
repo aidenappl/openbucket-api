@@ -12,7 +12,7 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 	secure := !env.CookieInsecure
 
 	// Clear all auth cookies
-	for _, name := range []string{"ob-access-token", "ob-refresh-token", "logged_in"} {
+	for _, name := range []string{"ob-access-token", "ob-refresh-token", "ob-logged-in"} {
 		http.SetCookie(w, &http.Cookie{
 			Name:     name,
 			Value:    "",
@@ -20,7 +20,7 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 			Domain:   env.CookieDomain,
 			MaxAge:   -1,
 			Expires:  time.Unix(0, 0),
-			HttpOnly: name != "logged_in",
+			HttpOnly: name != "ob-logged-in",
 			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
 		})

@@ -34,7 +34,7 @@ func setTokenCookies(w http.ResponseWriter, accessToken, refreshToken string, ac
 
 	// Non-HttpOnly cookie for frontend JS to detect login state
 	http.SetCookie(w, &http.Cookie{
-		Name:     "logged_in",
+		Name:     "ob-logged-in",
 		Value:    "true",
 		Path:     "/",
 		Domain:   env.CookieDomain,

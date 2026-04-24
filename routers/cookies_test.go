@@ -63,15 +63,15 @@ func TestSetTokenCookies(t *testing.T) {
 		}
 	}
 
-	// logged_in
-	if c, ok := cookieMap["logged_in"]; !ok {
-		t.Fatal("missing logged_in cookie")
+	// ob-logged-in
+	if c, ok := cookieMap["ob-logged-in"]; !ok {
+		t.Fatal("missing ob-logged-in cookie")
 	} else {
 		if c.value != "true" {
-			t.Fatalf("expected logged_in=true, got %s", c.value)
+			t.Fatalf("expected ob-logged-in=true, got %s", c.value)
 		}
 		if c.httpOnly {
-			t.Fatal("logged_in should NOT be HttpOnly (frontend JS reads it)")
+			t.Fatal("ob-logged-in should NOT be HttpOnly (frontend JS reads it)")
 		}
 	}
 }

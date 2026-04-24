@@ -20,7 +20,7 @@ func TestHandleLogout_ClearsCookies(t *testing.T) {
 	expectedNames := map[string]bool{
 		"ob-access-token":  false,
 		"ob-refresh-token": false,
-		"logged_in":        false,
+		"ob-logged-in":        false,
 	}
 
 	for _, c := range cookies {
@@ -49,8 +49,8 @@ func TestHandleLogout_LoggedInNotHttpOnly(t *testing.T) {
 	HandleLogout(rr, req)
 
 	for _, c := range rr.Result().Cookies() {
-		if c.Name == "logged_in" && c.HttpOnly {
-			t.Fatal("logged_in cookie should not be HttpOnly")
+		if c.Name == "ob-logged-in" && c.HttpOnly {
+			t.Fatal("ob-logged-in cookie should not be HttpOnly")
 		}
 		if c.Name == "ob-access-token" && !c.HttpOnly {
 			t.Fatal("ob-access-token cookie should be HttpOnly")
