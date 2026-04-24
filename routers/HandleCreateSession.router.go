@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"net/url"
 
-	forta "github.com/aidenappl/go-forta"
 	"github.com/aidenappl/openbucket-api/db"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/query"
 	"github.com/aidenappl/openbucket-api/responder"
 	"github.com/aidenappl/openbucket-api/tools"
@@ -22,9 +22,9 @@ type CreateSessionRequest struct {
 }
 
 func HandleCreateSession(w http.ResponseWriter, r *http.Request) {
-	fortaID, ok := forta.GetFortaIDFromContext(r.Context())
+	userID, ok := middleware.GetUserID(r.Context())
 	if !ok {
-		responder.SendError(w, http.StatusUnauthorized, "unauthenticated", nil)
+		responder.SendError(w, http.StatusUnauthorized, "unauthenticated")
 		return
 	}
 
@@ -35,23 +35,23 @@ func HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.BucketName == "" || body.Region == "" || body.Endpoint == "" {
-		responder.SendError(w, http.StatusBadRequest, "Missing required fields", nil)
+		responder.SendError(w, http.StatusBadRequest, "Missing required fields")
 		return
 	}
 
 	// Validate endpoint is a valid HTTP(S) URL
 	epURL, err := url.Parse(body.Endpoint)
 	if err != nil || (epURL.Scheme != "http" && epURL.Scheme != "https") || epURL.Host == "" {
-		responder.SendError(w, http.StatusBadRequest, "endpoint must be a valid HTTP(S) URL", nil)
+		responder.SendError(w, http.StatusBadRequest, "endpoint must be a valid HTTP(S) URL")
 		return
 	}
 
 	req := query.InsertSessionRequest{
-		FortaUserID: fortaID,
-		BucketName:  body.BucketName,
-		Nickname:    body.Nickname,
-		Region:      body.Region,
-		Endpoint:    body.Endpoint,
+		UserID:     int64(userID),
+		BucketName: body.BucketName,
+		Nickname:   body.Nickname,
+		Region:     body.Region,
+		Endpoint:   body.Endpoint,
 	}
 
 	if body.AccessKey != nil {

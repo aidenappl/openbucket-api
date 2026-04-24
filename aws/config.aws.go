@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	forta "github.com/aidenappl/go-forta"
 	"github.com/aidenappl/openbucket-api/cache"
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/tools"
@@ -15,22 +14,17 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
-type contextKey string
-
-const SessionContextKey contextKey = "session"
-
-// GetSessionFromContext extracts session claims from context
+// GetSessionFromContext extracts session claims from context.
 func GetSessionFromContext(ctx context.Context) (*tools.SessionClaims, error) {
 	sessionData := middleware.GetSession(ctx)
 	if sessionData == nil {
 		return nil, fmt.Errorf("no session found in context")
 	}
-
 	return sessionData, nil
 }
 
 // CreateAWSSession creates an AWS session from context session claims.
-// It also verifies that the session belongs to the authenticated Forta user.
+// It verifies that the session belongs to the authenticated user.
 // Sessions are cached by session ID for 5 minutes.
 func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 	sessionClaims, err := GetSessionFromContext(ctx)
@@ -39,11 +33,11 @@ func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 	}
 
 	// Verify the session belongs to the authenticated user
-	fortaID, ok := forta.GetFortaIDFromContext(ctx)
+	userID, ok := middleware.GetUserID(ctx)
 	if !ok {
 		return nil, fmt.Errorf("no authenticated user in context")
 	}
-	if sessionClaims.FortaUserID != fortaID {
+	if sessionClaims.UserID != int64(userID) {
 		return nil, fmt.Errorf("session does not belong to authenticated user")
 	}
 
@@ -62,7 +56,7 @@ func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 		config.Credentials = credentials.NewStaticCredentials(
 			*sessionClaims.AccessKey,
 			*sessionClaims.SecretKey,
-			"", // token
+			"",
 		)
 	}
 
@@ -71,12 +65,11 @@ func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 		return nil, err
 	}
 
-	// Cache the session
 	cache.SetAWSSession(sessionClaims.SessionID, sess)
 	return sess, nil
 }
 
-// GetS3Client creates an S3 client from context
+// GetS3Client creates an S3 client from context.
 func GetS3Client(ctx context.Context) (*s3.S3, error) {
 	sess, err := CreateAWSSession(ctx)
 	if err != nil {
@@ -85,7 +78,7 @@ func GetS3Client(ctx context.Context) (*s3.S3, error) {
 	return s3.New(sess), nil
 }
 
-// GetUploader creates an S3 uploader from context
+// GetUploader creates an S3 uploader from context.
 func GetUploader(ctx context.Context) (*s3manager.Uploader, error) {
 	sess, err := CreateAWSSession(ctx)
 	if err != nil {
@@ -94,7 +87,7 @@ func GetUploader(ctx context.Context) (*s3manager.Uploader, error) {
 	return s3manager.NewUploader(sess), nil
 }
 
-// GetDownloader creates an S3 downloader from context
+// GetDownloader creates an S3 downloader from context.
 func GetDownloader(ctx context.Context) (*s3manager.Downloader, error) {
 	sess, err := CreateAWSSession(ctx)
 	if err != nil {

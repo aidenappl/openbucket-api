@@ -3,16 +3,16 @@ package structs
 import "time"
 
 type Session struct {
-	ID          int64     `json:"id"`
-	FortaUserID int64     `json:"forta_user_id"`
-	BucketName  string    `json:"bucket"`
-	Nickname    string    `json:"nickname"`
-	Region      string    `json:"region"`
-	Endpoint    string    `json:"endpoint"`
-	AccessKey   *string   `json:"-"`
-	SecretKey   *string   `json:"-"`
-	InsertedAt  time.Time `json:"inserted_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID         int64     `json:"id"`
+	UserID     int64     `json:"user_id"`
+	BucketName string    `json:"bucket"`
+	Nickname   string    `json:"nickname"`
+	Region     string    `json:"region"`
+	Endpoint   string    `json:"endpoint"`
+	AccessKey  *string   `json:"-"`
+	SecretKey  *string   `json:"-"`
+	InsertedAt time.Time `json:"inserted_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type PublicSession struct {

@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	forta "github.com/aidenappl/go-forta"
+	"github.com/aidenappl/openbucket-api/bootstrap"
 	"github.com/aidenappl/openbucket-api/db"
 	"github.com/aidenappl/openbucket-api/env"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -22,45 +22,25 @@ func maxBodyMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
-	// Load secrets from Keyring (if configured) and read env vars
+	// Load secrets from Keyring
 	env.Init()
-
-	// Initialize Forta authentication
-	fmt.Print("Connecting to Forta... ")
-	if err := forta.Setup(forta.Config{
-		AppDomain:          env.FortaAppDomain,
-		APIDomain:          env.FortaAPIDomain,
-		LoginDomain:        env.FortaLoginDomain,
-		ClientID:           env.FortaClientID,
-		ClientSecret:       env.FortaClientSecret,
-		CallbackURL:        env.FortaCallbackURL,
-		PostLoginRedirect:  env.FortaPostLoginRedirect,
-		PostLogoutRedirect: env.FortaPostLogoutRedirect,
-		CookieDomain:       env.FortaCookieDomain,
-		CookieInsecure:     env.FortaCookieInsecure,
-		JWTSigningKey:      env.FortaJWTSigningKey,
-		FetchUserOnProtect: env.FortaFetchUserOnProtect,
-		DisableAutoRefresh: env.FortaDisableAutoRefresh,
-		EnforceGrants:      env.FortaEnforceGrants,
-	}); err != nil {
-		log.Fatal("forta setup:", err)
-	}
-
-	// Verify Forta API is reachable before accepting traffic
-	if err := forta.Ping(); err != nil {
-		log.Fatal("forta unreachable:", err)
-	} else {
-		fmt.Println("✅ Done")
-	}
 
 	// Initialize the database connection
 	db.Init()
 
-	// Connect to the database
+	// Verify database connectivity
 	if err := db.PingDB(db.DB); err != nil {
 		log.Fatal("database connect:", err)
 	} else {
 		fmt.Println("✅ Done")
+	}
+
+	// Run database migrations
+	db.RunMigrations()
+
+	// Bootstrap admin user (first-run only)
+	if err := bootstrap.EnsureAdminUser(db.DB); err != nil {
+		log.Printf("Warning: failed to bootstrap admin user: %v", err)
 	}
 
 	fmt.Println()
@@ -79,90 +59,104 @@ func main() {
 		w.Write([]byte("OK"))
 	}).Methods(http.MethodGet)
 
-	// Request body size limit
+	// Global middleware
 	r.Use(maxBodyMiddleware)
-
-	// Request logger
 	r.Use(middleware.LoggingMiddleware)
+	r.Use(middleware.CSRFMiddleware)
 
-	// Forta Authentication Handlers
-	r.HandleFunc("/forta/login", forta.LoginHandler).Methods(http.MethodGet)
-	r.HandleFunc("/forta/logout", forta.LogoutHandler).Methods(http.MethodGet)
+	// ── Auth Endpoints (public) ──────────────────────────────────────────
+	r.HandleFunc("/auth/login", routers.HandleLogin).Methods(http.MethodPost)
+	r.HandleFunc("/auth/refresh", routers.HandleRefresh).Methods(http.MethodPost)
+	r.HandleFunc("/auth/sso/config", routers.HandleSSOConfig).Methods(http.MethodGet)
+	r.HandleFunc("/auth/sso/login", routers.HandleSSOLogin).Methods(http.MethodGet)
+	r.HandleFunc("/auth/sso/callback", routers.HandleSSOCallback).Methods(http.MethodGet)
 
-	// Forta User Endpoints
-	// Get current user (protected - requires valid Forta session)
-	r.HandleFunc("/self", forta.Protected(routers.HandleGetCurrentUser)).Methods(http.MethodGet)
+	// ── Auth Endpoints (protected) ───────────────────────────────────────
+	r.HandleFunc("/auth/self", middleware.Protected(routers.HandleGetSelf)).Methods(http.MethodGet)
+	r.HandleFunc("/auth/self", middleware.Protected(routers.HandleUpdateSelf)).Methods(http.MethodPut)
+	r.HandleFunc("/auth/logout", middleware.Protected(routers.HandleLogout)).Methods(http.MethodPost)
 
-	// Core V1 API Endpoint
+	// ── Core V1 API (protected) ──────────────────────────────────────────
 	core := r.PathPrefix("/core/v1/").Subrouter()
-	core.HandleFunc("/session", forta.Protected(routers.HandleCreateSession)).Methods(http.MethodPost)
-	core.HandleFunc("/sessions", forta.Protected(routers.HandleListSessions)).Methods(http.MethodGet)
+	core.Use(middleware.AuthMiddleware)
+	core.Use(middleware.RejectPending)
 
-	// Bucket Operations
+	core.HandleFunc("/session", routers.HandleCreateSession).Methods(http.MethodPost)
+	core.HandleFunc("/sessions", routers.HandleListSessions).Methods(http.MethodGet)
+
+	// ── Bucket Operations (protected + session-scoped) ───────────────────
 	bucket := core.PathPrefix("/{sessionId}").Subrouter()
-	bucket.Use(middleware.FortaMiddleware)
 	bucket.Use(middleware.SessionMiddleware)
 
-	// -- Object Operations --
-	// Put Object
+	// Object Operations
 	bucket.HandleFunc("/object", routers.HandleUpload).Methods(http.MethodPut)
-	// Get Object
 	bucket.HandleFunc("/object", routers.HandleGetObject).Methods(http.MethodGet)
-	// Get Object Head
 	bucket.HandleFunc("/object/head", routers.HandleGetObjectHead).Methods(http.MethodGet)
-	// Get [POST] Object Head (Bulk)
 	bucket.HandleFunc("/object/head", routers.HandleGetObjectHead).Methods(http.MethodPost)
-	// Get Object ACL
 	bucket.HandleFunc("/object/acl", routers.HandleGetObjectACL).Methods(http.MethodGet)
-	// Modify Object ACL
 	bucket.HandleFunc("/object/acl", routers.HandleModifyObjectACL).Methods(http.MethodPut)
-	// Modify Object ACL (Bulk)
 	bucket.HandleFunc("/object/acl", routers.HandleModifyObjectACL).Methods(http.MethodPost)
-	// Delete Object
 	bucket.HandleFunc("/object", routers.HandleDeleteObject).Methods(http.MethodDelete)
-	// List Objects
 	bucket.HandleFunc("/objects", routers.HandleListObjects).Methods(http.MethodGet)
-	// Presign Object
 	bucket.HandleFunc("/object/presign", routers.HandlePresign).Methods(http.MethodGet)
-	// Rename Object
 	bucket.HandleFunc("/object/rename", routers.HandleRenameObject).Methods(http.MethodPut)
 
-	// -- Folder Operations --
-	// Get Folder
+	// Folder Operations
 	bucket.HandleFunc("/folder", routers.HandleGetFolder).Methods(http.MethodGet)
-	// List Folders
 	bucket.HandleFunc("/folders", routers.HandleListFolders).Methods(http.MethodGet)
-	// Create Folder
 	bucket.HandleFunc("/folder", routers.HandleCreateFolder).Methods(http.MethodPost)
-	// Update Folder
 	bucket.HandleFunc("/folder", routers.HandleUpdateFolder).Methods(http.MethodPut)
-	// Delete Folder
 	bucket.HandleFunc("/folder", routers.HandleDeleteFolder).Methods(http.MethodDelete)
 
-	// Bucket Operations
-	// List Buckets
-	// Create Bucket
-	// Delete Bucket
-	// Get Bucket Info
-	// List Objects in Bucket
-	// Get Object Info
+	// ── Admin Endpoints (admin role required) ────────────────────────────
+	admin := r.PathPrefix("/admin/").Subrouter()
+	admin.Use(middleware.AuthMiddleware)
+	admin.Use(middleware.RejectPending)
 
-	// CORS Middleware
+	// User Management
+	admin.HandleFunc("/users", middleware.RequireAdmin(routers.HandleAdminListUsers)).Methods(http.MethodGet)
+	admin.HandleFunc("/users", middleware.RequireAdmin(routers.HandleAdminCreateUser)).Methods(http.MethodPost)
+	admin.HandleFunc("/users/{id}", middleware.RequireAdmin(routers.HandleAdminUpdateUser)).Methods(http.MethodPut)
+	admin.HandleFunc("/users/{id}", middleware.RequireAdmin(routers.HandleAdminDeleteUser)).Methods(http.MethodDelete)
+
+	// SSO Configuration
+	admin.HandleFunc("/sso-config", middleware.RequireAdmin(routers.HandleAdminGetSSOConfig)).Methods(http.MethodGet)
+	admin.HandleFunc("/sso-config", middleware.RequireAdmin(routers.HandleAdminUpdateSSOConfig)).Methods(http.MethodPut)
+
+	// Instance Management
+	admin.HandleFunc("/instances", middleware.RequireAdmin(routers.HandleAdminListInstances)).Methods(http.MethodGet)
+	admin.HandleFunc("/instances", middleware.RequireAdmin(routers.HandleAdminCreateInstance)).Methods(http.MethodPost)
+	admin.HandleFunc("/instances/{id}", middleware.RequireAdmin(routers.HandleAdminUpdateInstance)).Methods(http.MethodPut)
+	admin.HandleFunc("/instances/{id}", middleware.RequireAdmin(routers.HandleAdminDeleteInstance)).Methods(http.MethodDelete)
+
+	// Instance Proxy — forwards to openbucket-go admin API
+	admin.HandleFunc("/instances/{id}/proxy/{path:.*}", middleware.RequireAdmin(routers.HandleAdminInstanceProxy)).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+
+	// ── CORS ─────────────────────────────────────────────────────────────
 	corsMiddleware := cors.New(cors.Options{
 		AllowedOrigins: []string{
 			"https://openbucket.local.appleby.cloud:3010",
 			"https://openbucket.appleby.cloud",
 		},
 		AllowCredentials: true,
-		AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Requested-With", "Accept"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Requested-With", "Accept", "X-CSRF-Token"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 	})
 
+	// ── Server ───────────────────────────────────────────────────────────
+	server := &http.Server{
+		Addr:         ":" + env.Port,
+		Handler:      corsMiddleware.Handler(r),
+		ReadTimeout:  15 * 1e9,
+		WriteTimeout: 60 * 1e9,
+		IdleTimeout:  120 * 1e9,
+	}
+
 	if env.TLSCert != "" && env.TLSKey != "" {
 		log.Printf("✅ OpenBucket API running (HTTPS) on port %s\n", env.Port)
-		log.Fatal(http.ListenAndServeTLS(":"+env.Port, env.TLSCert, env.TLSKey, corsMiddleware.Handler(r)))
+		log.Fatal(server.ListenAndServeTLS(env.TLSCert, env.TLSKey))
 	} else {
 		log.Printf("✅ OpenBucket API running on port %s\n", env.Port)
-		log.Fatal(http.ListenAndServe(":"+env.Port, corsMiddleware.Handler(r)))
+		log.Fatal(server.ListenAndServe())
 	}
 }

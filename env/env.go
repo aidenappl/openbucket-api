@@ -15,21 +15,30 @@ var (
 	CoreDBBase string
 	CryptoKey  string
 
-	// Forta Authentication Configuration
-	FortaAppDomain          string
-	FortaAPIDomain          string
-	FortaLoginDomain        string
-	FortaClientID           string
-	FortaClientSecret       string
-	FortaCallbackURL        string
-	FortaJWTSigningKey      string
-	FortaPostLoginRedirect  string
-	FortaPostLogoutRedirect string
-	FortaCookieDomain       string
-	FortaCookieInsecure     bool
-	FortaFetchUserOnProtect bool
-	FortaDisableAutoRefresh bool
-	FortaEnforceGrants      bool
+	// JWT Configuration
+	JWTSigningKey string
+
+	// Cookie Configuration
+	CookieDomain   string
+	CookieInsecure bool
+
+	// Bootstrap Admin
+	AdminEmail    string
+	AdminPassword string
+
+	// SSO Configuration (env var fallback — DB settings take precedence)
+	SSOClientID       string
+	SSOClientSecret   string
+	SSOAuthorizeURL   string
+	SSOTokenURL       string
+	SSOUserInfoURL    string
+	SSORedirectURL    string
+	SSOLogoutURL      string
+	SSOScopes         string
+	SSOUserIdentifier string
+	SSOButtonLabel    string
+	SSOAutoProvision  bool
+	SSOPostLoginURL   string
 )
 
 // Init loads all configuration from Keyring. The three KEYRING_* env vars
@@ -46,22 +55,33 @@ func Init() {
 	TLSKey = getOr(ctx, "TLS_KEY", "")
 
 	CoreDBBase = keyring.MustGet("CORE_DB_DSN")
-	CryptoKey = keyring.MustGet("CRYPTO_KEY")
+	CryptoKey = keyring.MustGet("OB_CRYPTO_KEY")
 
-	FortaAppDomain = keyring.MustGet("OB_FORTA_APP_DOMAIN")
-	FortaAPIDomain = keyring.MustGet("FORTA_API_DOMAIN")
-	FortaLoginDomain = keyring.MustGet("FORTA_LOGIN_DOMAIN")
-	FortaClientID = keyring.MustGet("OB_FORTA_CLIENT_ID")
-	FortaClientSecret = keyring.MustGet("OB_FORTA_CLIENT_SECRET")
-	FortaCallbackURL = keyring.MustGet("OB_FORTA_CALLBACK_URL")
-	FortaJWTSigningKey = keyring.MustGet("FORTA_JWT_SIGNING_KEY")
-	FortaPostLoginRedirect = getOr(ctx, "FORTA_POST_LOGIN_REDIRECT", "/")
-	FortaPostLogoutRedirect = getOr(ctx, "FORTA_POST_LOGOUT_REDIRECT", "/")
-	FortaCookieDomain = getOr(ctx, "FORTA_COOKIE_DOMAIN", "")
-	FortaCookieInsecure = getOr(ctx, "FORTA_COOKIE_INSECURE", "false") == "true"
-	FortaFetchUserOnProtect = getOr(ctx, "FORTA_FETCH_USER_ON_PROTECT", "true") == "true"
-	FortaDisableAutoRefresh = getOr(ctx, "FORTA_DISABLE_AUTO_REFRESH", "false") == "true"
-	FortaEnforceGrants = getOr(ctx, "FORTA_ENFORCE_GRANTS", "true") == "true"
+	// JWT — required for local auth
+	JWTSigningKey = keyring.MustGet("OB_JWT_SIGNING_KEY")
+
+	// Cookies
+	CookieDomain = getOr(ctx, "OB_COOKIE_DOMAIN", "")
+	CookieInsecure = getOr(ctx, "OB_COOKIE_INSECURE", "false") == "true"
+
+	// Bootstrap admin (optional — only used on first run)
+	AdminEmail = getOr(ctx, "OB_ADMIN_EMAIL", "")
+	AdminPassword = getOr(ctx, "OB_ADMIN_PASSWORD", "")
+
+	// SSO (optional — DB settings take precedence)
+	SSOClientID = getOr(ctx, "OB_SSO_CLIENT_ID", "")
+	SSOClientSecret = getOr(ctx, "OB_SSO_CLIENT_SECRET", "")
+	SSOAuthorizeURL = getOr(ctx, "OB_SSO_AUTHORIZE_URL", "")
+	SSOTokenURL = getOr(ctx, "OB_SSO_TOKEN_URL", "")
+	SSOUserInfoURL = getOr(ctx, "OB_SSO_USERINFO_URL", "")
+	SSORedirectURL = getOr(ctx, "OB_SSO_REDIRECT_URL", "")
+	SSOLogoutURL = getOr(ctx, "OB_SSO_LOGOUT_URL", "")
+	SSOScopes = getOr(ctx, "OB_SSO_SCOPES", "openid email profile")
+	SSOUserIdentifier = getOr(ctx, "OB_SSO_USER_IDENTIFIER", "email")
+	SSOButtonLabel = getOr(ctx, "OB_SSO_BUTTON_LABEL", "Sign in with SSO")
+	SSOAutoProvision = getOr(ctx, "OB_SSO_AUTO_PROVISION", "true") == "true"
+	SSOPostLoginURL = getOr(ctx, "OB_SSO_POST_LOGIN_URL", "")
+
 	fmt.Println("Connecting to Keyring... ✅ Done")
 }
 

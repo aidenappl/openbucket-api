@@ -3,23 +3,23 @@ package routers
 import (
 	"net/http"
 
-	forta "github.com/aidenappl/go-forta"
 	"github.com/aidenappl/openbucket-api/db"
+	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/query"
 	"github.com/aidenappl/openbucket-api/responder"
 	"github.com/aidenappl/openbucket-api/structs"
 )
 
 func HandleListSessions(w http.ResponseWriter, r *http.Request) {
-	fortaID, ok := forta.GetFortaIDFromContext(r.Context())
+	userID, ok := middleware.GetUserID(r.Context())
 	if !ok {
-		responder.SendError(w, http.StatusUnauthorized, "unauthenticated", nil)
+		responder.SendError(w, http.StatusUnauthorized, "unauthenticated")
 		return
 	}
 
 	sessions, err := query.ListSessions(db.DB, query.ListSessionsRequest{
 		Select: &query.SelectSession{
-			FortaUserID: fortaID,
+			UserID: int64(userID),
 		},
 	})
 	if err != nil {

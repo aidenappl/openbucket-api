@@ -15,7 +15,7 @@ A Go-based API for S3-compatible bucket operations with Forta authentication.
 | Variable                | Description                                                          |
 | ----------------------- | -------------------------------------------------------------------- |
 | `CORE_DB_DSN`           | MariaDB DSN (e.g., `user:pass@tcp(host:3306)/dbname?parseTime=true`) |
-| `CRYPTO_KEY`            | AES-GCM key for encrypting stored S3 credentials                     |
+| `OB_CRYPTO_KEY`            | AES-GCM key for encrypting stored S3 credentials                     |
 | `FORTA_CLIENT_ID`       | OAuth2 client ID from Forta admin panel                              |
 | `FORTA_CLIENT_SECRET`   | OAuth2 client secret from Forta admin panel                          |
 | `FORTA_CALLBACK_URL`    | Full callback URL (e.g., `https://myapp.example.com/forta/callback`) |
@@ -53,7 +53,7 @@ source migrations/001_create_sessions.sql
 
 ```bash
 export CORE_DB_DSN="user:pass@tcp(localhost:3306)/openbucket?parseTime=true"
-export CRYPTO_KEY="your-32-byte-crypto-key"
+export OB_CRYPTO_KEY="your-32-byte-crypto-key"
 export FORTA_CLIENT_ID="your-client-id"
 export FORTA_CLIENT_SECRET="your-client-secret"
 export FORTA_CALLBACK_URL="https://your-domain.com/forta/callback"

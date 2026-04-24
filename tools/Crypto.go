@@ -14,7 +14,7 @@ import (
 
 func Encrypt(text string) (string, error) {
 	if len(env.CryptoKey) != 32 {
-		return "", fmt.Errorf("CRYPTO_KEY must be exactly 32 bytes for AES-256, got %d", len(env.CryptoKey))
+		return "", fmt.Errorf("OB_CRYPTO_KEY must be exactly 32 bytes for AES-256, got %d", len(env.CryptoKey))
 	}
 
 	block, err := aes.NewCipher([]byte(env.CryptoKey))
