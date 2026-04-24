@@ -3,6 +3,7 @@ package responder
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 )
 
@@ -13,6 +14,14 @@ type ResponseStructure struct {
 }
 
 func New(w http.ResponseWriter, data interface{}, message ...string) {
+	// Ensure nil slices are serialized as [] instead of null
+	if data != nil {
+		v := reflect.ValueOf(data)
+		if v.Kind() == reflect.Slice && v.IsNil() {
+			data = reflect.MakeSlice(v.Type(), 0, 0).Interface()
+		}
+	}
+
 	response := ResponseStructure{
 		Success: true,
 		Data:    data,
