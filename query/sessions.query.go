@@ -158,3 +158,29 @@ func ListSessions(engine db.Queryable, req ListSessionsRequest) ([]structs.Sessi
 	}
 	return sessions, rows.Err()
 }
+
+// DeleteSession removes a session by ID, scoped to the owning user.
+func DeleteSession(engine db.Queryable, sessionID int64, userID int64) error {
+	q := sq.Delete("sessions").
+		Where(sq.Eq{"id": sessionID, "user_id": userID})
+
+	qStr, args, err := q.ToSql()
+	if err != nil {
+		return fmt.Errorf("failed to build delete query: %w", err)
+	}
+
+	result, err := engine.Exec(qStr, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete session: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("session not found")
+	}
+
+	return nil
+}

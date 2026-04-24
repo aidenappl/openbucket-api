@@ -82,6 +82,7 @@ func main() {
 	core.Use(middleware.RejectPending)
 
 	core.HandleFunc("/session", routers.HandleCreateSession).Methods(http.MethodPost)
+	core.HandleFunc("/session/{id}", routers.HandleDeleteSession).Methods(http.MethodDelete)
 	core.HandleFunc("/sessions", routers.HandleListSessions).Methods(http.MethodGet)
 
 	// ── Bucket Operations (protected + session-scoped) ───────────────────
