@@ -11,6 +11,7 @@ import (
 	"github.com/aidenappl/openbucket-api/query"
 	"github.com/aidenappl/openbucket-api/sso"
 	"github.com/aidenappl/openbucket-api/structs"
+	"github.com/aidenappl/openbucket-api/tools"
 )
 
 // HandleSSOConfig returns the public SSO configuration for the frontend login page.
@@ -96,6 +97,27 @@ func HandleSSOCallback(w http.ResponseWriter, r *http.Request) {
 		_, _ = query.UpdateUser(db.DB, user.ID, query.UpdateUserRequest{
 			ProfileImageURL: &picture,
 		})
+	}
+
+	// Persist the Forta tokens so the auth middleware can checkpoint the
+	// user's grant against forta-api on a TTL. Tokens are encrypted at rest
+	// with the OB_CRYPTO_KEY used elsewhere for S3 credentials.
+	encAccess, err := tools.Encrypt(tokenResp.AccessToken)
+	if err != nil {
+		log.Printf("SSO: failed to encrypt access token: %v", err)
+		redirectWithError(w, r, cfg, "sso_provision_failed")
+		return
+	}
+	encRefresh, err := tools.Encrypt(tokenResp.RefreshToken)
+	if err != nil {
+		log.Printf("SSO: failed to encrypt refresh token: %v", err)
+		redirectWithError(w, r, cfg, "sso_provision_failed")
+		return
+	}
+	if err := query.UpsertSSOSession(db.DB, int64(user.ID), encAccess, encRefresh); err != nil {
+		log.Printf("SSO: failed to persist sso session: %v", err)
+		redirectWithError(w, r, cfg, "sso_provision_failed")
+		return
 	}
 
 	if !setAuthCookies(w, user.ID) {

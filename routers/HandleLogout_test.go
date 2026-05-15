@@ -20,7 +20,7 @@ func TestHandleLogout_ClearsCookies(t *testing.T) {
 	expectedNames := map[string]bool{
 		"ob-access-token":  false,
 		"ob-refresh-token": false,
-		"ob-logged-in":        false,
+		"ob-logged-in":     false,
 	}
 
 	for _, c := range cookies {

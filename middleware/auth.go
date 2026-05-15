@@ -2,21 +2,31 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/aidenappl/openbucket-api/db"
 	"github.com/aidenappl/openbucket-api/jwt"
 	"github.com/aidenappl/openbucket-api/query"
 	"github.com/aidenappl/openbucket-api/responder"
+	"github.com/aidenappl/openbucket-api/sso"
 	"github.com/aidenappl/openbucket-api/structs"
+	"github.com/aidenappl/openbucket-api/tools"
 )
+
+// ssoCheckpointTTL controls how often the auth middleware re-validates an
+// SSO user's grant against the IDP. Shorter = faster revocation propagation,
+// more network calls. 5 min is the practical floor for an admin-initiated
+// revoke since the IDP's access token TTL is 10 min.
+const ssoCheckpointTTL = 5 * time.Minute
 
 type contextKey string
 
 const (
-	UserContextKey   contextKey = "user"
-	obAccessToken               = "ob-access-token"
+	UserContextKey    contextKey = "user"
+	obAccessToken                = "ob-access-token"
 	SessionContextKey contextKey = "session"
 )
 
@@ -126,7 +136,61 @@ func validateToken(tokenStr string) *structs.User {
 		return nil
 	}
 
+	if user.AuthType == "sso" && !checkpointSSOGrant(int64(userID)) {
+		return nil
+	}
+
 	return user
+}
+
+// checkpointSSOGrant re-validates the user's grant against the IDP on a TTL.
+// Returns true if the grant is still active (or the check is skipped because
+// it ran recently). Returns false if the IDP reports active=false — in which
+// case the sso_sessions row is deleted and the caller MUST 401 the request,
+// killing the local session.
+//
+// Network errors fail-open (return true) — a transient IDP outage shouldn't
+// log users out, but it does mean revocation latency gets a small extra
+// budget during incidents.
+func checkpointSSOGrant(userID int64) bool {
+	sess, err := query.GetSSOSession(db.DB, userID)
+	if err != nil {
+		log.Printf("checkpointSSOGrant: db lookup: %v (allowing request)", err)
+		return true
+	}
+	if sess == nil {
+		// SSO user with no stored Forta tokens — pre-checkpoint legacy state.
+		// Treat as still valid; the next SSO login will populate the row.
+		return true
+	}
+	if time.Since(sess.LastCheckedAt) < ssoCheckpointTTL {
+		return true
+	}
+
+	refreshToken, err := tools.Decrypt(sess.RefreshToken)
+	if err != nil {
+		log.Printf("checkpointSSOGrant: decrypt refresh token: %v", err)
+		return true
+	}
+
+	resp, err := sso.Introspect(refreshToken, "refresh_token")
+	if err != nil {
+		log.Printf("checkpointSSOGrant: introspect call failed: %v (allowing request)", err)
+		return true
+	}
+
+	if !resp.Active {
+		log.Printf("checkpointSSOGrant: IDP reports inactive for user %d, killing local session", userID)
+		if delErr := query.DeleteSSOSession(db.DB, userID); delErr != nil {
+			log.Printf("checkpointSSOGrant: failed to delete sso_session: %v", delErr)
+		}
+		return false
+	}
+
+	if err := query.TouchSSOSession(db.DB, userID); err != nil {
+		log.Printf("checkpointSSOGrant: touch failed: %v", err)
+	}
+	return true
 }
 
 func extractBearerToken(r *http.Request) string {
