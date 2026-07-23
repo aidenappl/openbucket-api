@@ -125,7 +125,32 @@ func RequireEditor(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// validateApiToken resolves an opaque API token (obk_…) to its owning user,
+// rejecting tokens that are revoked, expired, or whose owner is inactive.
+func validateApiToken(tokenStr string) *structs.User {
+	apiToken, err := query.GetApiTokenByHash(db.DB, tools.HashApiToken(tokenStr))
+	if err != nil || apiToken == nil {
+		return nil
+	}
+
+	user, err := query.GetUserByID(db.DB, apiToken.UserID)
+	if err != nil || user == nil || !user.Active {
+		return nil
+	}
+
+	// Best-effort: a failed timestamp update must not fail the request.
+	_ = query.TouchApiToken(db.DB, apiToken.ID)
+
+	return user
+}
+
 func validateToken(tokenStr string) *structs.User {
+	// Opaque API tokens are resolved against the database rather than parsed
+	// as JWTs, so they are handled before JWT validation.
+	if tools.IsApiToken(tokenStr) {
+		return validateApiToken(tokenStr)
+	}
+
 	userID, err := jwt.ValidateAccessToken(tokenStr)
 	if err != nil {
 		return nil

@@ -120,6 +120,11 @@ func main() {
 	admin.HandleFunc("/users/{id}", middleware.RequireAdmin(routers.HandleAdminUpdateUser)).Methods(http.MethodPut)
 	admin.HandleFunc("/users/{id}", middleware.RequireAdmin(routers.HandleAdminDeleteUser)).Methods(http.MethodDelete)
 
+	// API Tokens
+	admin.HandleFunc("/api-tokens", middleware.RequireAdmin(routers.HandleAdminListApiTokens)).Methods(http.MethodGet)
+	admin.HandleFunc("/api-tokens", middleware.RequireAdmin(routers.HandleAdminCreateApiToken)).Methods(http.MethodPost)
+	admin.HandleFunc("/api-tokens/{id}", middleware.RequireAdmin(routers.HandleAdminRevokeApiToken)).Methods(http.MethodDelete)
+
 	// SSO Configuration
 	admin.HandleFunc("/sso-config", middleware.RequireAdmin(routers.HandleAdminGetSSOConfig)).Methods(http.MethodGet)
 	admin.HandleFunc("/sso-config", middleware.RequireAdmin(routers.HandleAdminUpdateSSOConfig)).Methods(http.MethodPut)

@@ -41,6 +41,34 @@ Run the migration before starting the server:
 source migrations/001_create_sessions.sql
 ```
 
+## API Tokens
+
+`/admin/*` and `/core/v1/*` accept a long-lived opaque API token in the `Authorization` header, as an alternative to the 15-minute access JWT. These are what CLIs, CI and [openbucket-mcp](https://github.com/aidenappl/openbucket-mcp) use.
+
+```bash
+# Mint one (requires an admin session)
+curl -X POST https://api.openbucket.appleby.cloud/admin/api-tokens \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"claude-code","expires_in":"365d"}'
+
+# Use it
+curl -H "Authorization: Bearer obk_..." \
+  https://api.openbucket.appleby.cloud/admin/instances
+```
+
+| Endpoint                 | Method | Description                                     |
+| ------------------------ | ------ | ----------------------------------------------- |
+| `/admin/api-tokens`      | GET    | List active tokens (values never returned)      |
+| `/admin/api-tokens`      | POST   | Create a token — plaintext returned exactly once |
+| `/admin/api-tokens/{id}` | DELETE | Revoke a token (soft delete, audit trail kept)  |
+
+Tokens are `obk_`-prefixed, stored only as a SHA-256 hash, and resolved against the database on each request — so revocation is immediate. `expires_in` accepts `30d`, `90d`, `365d`, or `never` (default `90d`).
+
+Note that OpenBucket has its own user directory and JWT signing key; it uses Forta only as an SSO provider. A Forta `frt_` token will **not** authenticate here.
+
+Bearer auth also exempts a request from the CSRF double-submit check, which only applies to cookie-authenticated calls.
+
 ## Forta Authentication Endpoints
 
 | Endpoint        | Method | Description                           |
