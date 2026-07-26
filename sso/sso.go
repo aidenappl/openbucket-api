@@ -214,7 +214,7 @@ func ExchangeCode(code string) (*TokenResponse, error) {
 		"redirect_uri": {cfg.RedirectURL},
 	}
 
-	// 1. JSON body (Forta-style)
+	// 1. JSON body (non-standard, but some providers require it)
 	if resp, err := exchangeWithJSON(cfg, code); err == nil {
 		return resp, nil
 	}
@@ -291,7 +291,7 @@ func doTokenRequest(req *http.Request) (*TokenResponse, error) {
 		return &tokenResp, nil
 	}
 
-	// Forta envelope format: {"success": true, "data": {"authorization": {"access_token": "..."}}}
+	// Envelope format: {"success": true, "data": {"authorization": {"access_token": "..."}}}
 	var envelope struct {
 		Success bool `json:"success"`
 		Data    struct {
@@ -302,7 +302,7 @@ func doTokenRequest(req *http.Request) (*TokenResponse, error) {
 		return &envelope.Data.Authorization, nil
 	}
 
-	// Forta envelope with token at data level
+	// Envelope with the token at the data level
 	var envelope2 struct {
 		Success bool          `json:"success"`
 		Data    TokenResponse `json:"data"`
@@ -319,7 +319,7 @@ func doTokenRequest(req *http.Request) (*TokenResponse, error) {
 }
 
 // FetchUserInfo calls the userinfo endpoint with the access token.
-// Handles both flat OIDC-style JSON and Forta envelope format.
+// Handles both flat OIDC-style JSON and enveloped responses.
 func FetchUserInfo(accessToken string) (map[string]any, error) {
 	cfg := LoadConfig()
 	if cfg.UserInfoURL == "" {
@@ -350,7 +350,7 @@ func FetchUserInfo(accessToken string) (map[string]any, error) {
 		return nil, fmt.Errorf("failed to decode userinfo: %w", err)
 	}
 
-	// Unwrap Forta envelope
+	// Unwrap provider envelope
 	if _, hasSuccess := userInfo["success"]; hasSuccess {
 		if data, ok := userInfo["data"].(map[string]any); ok {
 			return data, nil

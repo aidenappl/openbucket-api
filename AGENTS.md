@@ -10,8 +10,8 @@
 > AGENTS.md in the SAME change. Stale context here misleads every future agent.
 >
 > **⚠️ Read this first:** OpenBucket has its **own user table and its own JWT signing key**. It
-> uses Forta only as a generic OIDC SSO provider. A Forta `frt_` API token does **not**
-> authenticate here — this service issues `obk_` tokens of its own.
+> supports a pluggable OIDC SSO provider as an identity source only — an API token issued by
+> that provider does **not** authenticate here. This service issues `obk_` tokens of its own.
 
 ---
 
@@ -20,7 +20,8 @@
 A Go HTTP service (`module github.com/aidenappl/openbucket-api`) serving
 **`api.openbucket.appleby.cloud`**. Three surfaces:
 
-1. **Auth** (`/auth/*`) — local email+password login, SSO via Forta, refresh, self.
+1. **Auth** (`/auth/*`) — local email+password login, SSO via the configured OIDC provider,
+   refresh, self.
 2. **Core v1** (`/core/v1/*`) — session creation, then every object and folder operation scoped
    to a session.
 3. **Admin** (`/admin/*`) — users, storage instances, SSO config, API tokens, and a passthrough
@@ -36,7 +37,7 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 - **SQL:** `Masterminds/squirrel` aliased `sq` over `database/sql` + MySQL driver. **No ORM.**
 - **AWS SDK:** `github.com/aws/aws-sdk-go` — S3 operations against the instance endpoints.
 - **JWT:** `github.com/golang-jwt/jwt/v5`, signed with `OB_JWT_SIGNING_KEY` (**distinct from
-  Forta's key**).
+  any SSO provider's key**).
 - **Secrets:** config is loaded from **Keyring** at startup via `env.Init()`.
 - **CORS:** `github.com/rs/cors` with an explicit allowlist.
 
@@ -55,7 +56,7 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 | `routers/` | `routers` | Handlers. Some have tests (`HandleLogin_test.go`). |
 | `structs/` | `structs` | `User`, `Session`, `Instance`, `SSOSession`, `ApiToken`. |
 | `tools/` | `tools` | `Password`, `Crypto`, `Validate`, `DecodeSession`, `ApiToken`. Several have tests. |
-| `sso/` | `sso` | Forta OIDC client. |
+| `sso/` | `sso` | Generic OIDC SSO client — no provider-specific code. |
 | `responder/` | `responder` | Envelopes. **Note: no `QueryError` helper** — use `SendError(w, http.StatusInternalServerError, msg, err)`. |
 | `aws/` | `aws` | S3 client wrappers and error mapping. |
 
@@ -75,8 +76,7 @@ dev / dev build / dev test / dev fmt / dev vet / dev check / dev tidy
   (`KEYRING_ACCESS_KEY_ID` / `KEYRING_SECRET_ACCESS_KEY` / `KEYRING_URL`).
 
 **Migrations run automatically** at startup and `log.Fatalf` on failure — so a healthy
-container is proof its migrations applied. This is the opposite of `forta-api`, which has no
-runner at all.
+container is proof its migrations applied. Nothing needs to be applied by hand.
 
 ## How code is written here
 
@@ -94,7 +94,7 @@ runner at all.
 
 ## Domain & architecture
 
-### Auth — independent from Forta
+### Auth — self-contained
 
 | Credential | Lifetime | Notes |
 |-----------|----------|-------|
@@ -104,17 +104,23 @@ runner at all.
 
 `validateToken` checks the `obk_` prefix **before** attempting JWT parsing.
 
-**`/auth/login` returns tokens in `Set-Cookie` headers, not the response body** — unlike
-`forta-api`, which returns a token pair in JSON. Any non-browser client must scrape
-`Set-Cookie` or use an `obk_` token.
+**`/auth/login` returns tokens in `Set-Cookie` headers, not the response body** — unlike the
+common convention of returning a token pair in JSON. The body carries the user. Any non-browser
+client must scrape `Set-Cookie` or use an `obk_` token.
 
 **`/auth/login` looks users up with `auth_type = "local"`.** An SSO-provisioned account cannot
 log in with a password no matter what it supplies — the failure is `invalid credentials`, which
 looks like a wrong password but means "wrong auth path".
 
-**SSO sessions are re-checkpointed** against Forta on a 5-minute TTL (`ssoCheckpointTTL`). If
-the IDP reports the grant inactive, the `sso_sessions` row is deleted and the request 401s.
-Network errors **fail open** deliberately — a transient Forta outage must not log everyone out.
+**SSO sessions are re-checkpointed** against the SSO provider on a 5-minute TTL
+(`ssoCheckpointTTL`). If the IDP reports the grant inactive, the `sso_sessions` row is deleted
+and the request 401s. Network errors **fail open** deliberately — a transient IDP outage must
+not log everyone out.
+
+**The SSO client is provider-agnostic.** `ExchangeCode` tries three token-endpoint conventions
+(JSON body, HTTP Basic, form body) and `doTokenRequest`/`FetchUserInfo` accept both flat OAuth2
+responses and providers that wrap them in a `{"success": true, "data": {…}}` envelope. Those
+fallbacks exist because real providers deviate from the spec — do not remove them.
 
 ### CSRF
 
@@ -144,8 +150,10 @@ approval.
 | [`openbucket-web`](https://github.com/aidenappl/openbucket-web) | Dashboard at `openbucket.appleby.cloud`. |
 | [`openbucket-cli`](https://github.com/aidenappl/openbucket-cli) | CLI client. |
 | [`openbucket-mcp`](https://github.com/aidenappl/openbucket-mcp) | MCP server. Uses `obk_` tokens. |
-| [`forta-api`](https://github.com/aidenappl/forta-api) | **OIDC provider only.** Not an auth delegate — this service keeps its own users. |
 | `keyring-api` | Supplies configuration at startup. |
+
+An external OIDC provider may be configured for SSO, but it is **not** an ecosystem dependency —
+this service keeps its own users and no code or config names a specific provider.
 
 ## Operations
 
@@ -215,4 +223,6 @@ Update this AGENTS.md in the same change when you:
 - **Change a query-parameter type or unit** → say so explicitly; the presign seconds/duration
   mismatch shipped a broken MCP tool.
 - **Change CI or the deploy step** → update *Operations*, including the `IMAGE_NAME` rationale.
-- Also keep `README.md` in sync — it documents the API-token flow and the Forta relationship.
+- Also keep `README.md` and `docs/` in sync — `docs/authentication.md` is the detailed auth
+  reference and `docs/frontend-integration.md` the client guide; both name concrete routes,
+  cookies and env vars, so a route or config change invalidates them immediately.

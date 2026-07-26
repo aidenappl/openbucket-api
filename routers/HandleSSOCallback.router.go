@@ -99,8 +99,8 @@ func HandleSSOCallback(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Persist the Forta tokens so the auth middleware can checkpoint the
-	// user's grant against forta-api on a TTL. Tokens are encrypted at rest
+	// Persist the SSO provider's tokens so the auth middleware can checkpoint
+	// the user's grant against the IDP on a TTL. Tokens are encrypted at rest
 	// with the OB_CRYPTO_KEY used elsewhere for S3 credentials.
 	encAccess, err := tools.Encrypt(tokenResp.AccessToken)
 	if err != nil {

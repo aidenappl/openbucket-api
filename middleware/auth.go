@@ -184,7 +184,7 @@ func checkpointSSOGrant(userID int64) bool {
 		return true
 	}
 	if sess == nil {
-		// SSO user with no stored Forta tokens — pre-checkpoint legacy state.
+		// SSO user with no stored provider tokens — pre-checkpoint legacy state.
 		// Treat as still valid; the next SSO login will populate the row.
 		return true
 	}

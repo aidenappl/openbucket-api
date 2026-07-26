@@ -15,7 +15,7 @@ import (
 func HandleLogout(w http.ResponseWriter, r *http.Request) {
 	secure := !env.CookieInsecure
 
-	// If this is an SSO user, drop the persisted Forta tokens too.
+	// If this is an SSO user, drop the persisted provider tokens too.
 	if user, ok := middleware.GetUserFromContext(r.Context()); ok && user != nil && user.AuthType == "sso" {
 		if err := query.DeleteSSOSession(db.DB, int64(user.ID)); err != nil {
 			log.Printf("HandleLogout: failed to delete sso_session for user %d: %v", user.ID, err)

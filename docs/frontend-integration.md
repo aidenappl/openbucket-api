@@ -1,86 +1,175 @@
-# Frontend Forta Integration Guide
+# Frontend Integration Guide
 
-This guide explains how to integrate Forta authentication into your frontend application using the OpenBucket API.
+How to build a browser client against the OpenBucket API. For the underlying auth model — token
+types, cookie names, role behaviour — see [Authentication](authentication.md).
+
+The reference implementation is [`openbucket-web`](https://github.com/aidenappl/openbucket-web);
+its `src/services/*.service.ts` files are the canonical version of everything below.
 
 ---
 
 ## Overview
 
-Forta uses cookie-based OAuth2 authentication. The flow is:
+Auth is **cookie-based**. Two login paths reach the same place:
 
-1. Frontend navigates to the API's `/forta/login` endpoint
-2. API generates CSRF token, sets state cookie, and redirects to `login.appleby.cloud`
-3. User authenticates on Forta
-4. Forta redirects back to the configured `FORTA_CALLBACK_URL` (handled server-side)
-5. API exchanges code for tokens and sets HttpOnly cookies
-6. API redirects to `FORTA_POST_LOGIN_REDIRECT`
-7. Subsequent requests automatically include auth cookies
+- **Local** — `POST /auth/login` with email + password.
+- **SSO** — navigate to `GET /auth/sso/login`, which 302s to the configured OIDC provider.
 
-**Important:** There is no public `/forta/callback` or `/forta/check` endpoint. Authentication state is determined by calling `/self` — a `401` means unauthenticated, a `200` means authenticated.
+Both set the same three cookies on success:
+
+| Cookie | HttpOnly | Purpose |
+|--------|----------|---------|
+| `ob-access-token` | yes | 15-minute access JWT |
+| `ob-refresh-token` | yes | 7-day refresh JWT |
+| `ob-logged-in` | **no** | Readable by JS so the app can detect login state without a round trip |
+
+Every request must send `credentials: "include"`.
+
+**There is no public callback or check endpoint to poll.** Auth state comes from
+`GET /auth/self`: `200` means authenticated, `401` means not.
+
+> **Access tokens are not refreshed automatically.** The API does not silently renew an expired
+> access token — on `401` the client must `POST /auth/refresh` and retry. See
+> [Handling 401](#handling-401) below.
 
 ---
 
-## Quick Start
+## Quick start
 
-### 1. Add Login Button
+### 1. Decide which login options to show
+
+`GET /auth/sso/config` is public and tells you whether the SSO button should exist at all.
 
 ```tsx
-function LoginButton() {
+interface SSOConfig {
+  enabled: boolean;
+  button_label?: string;
+  login_url?: string; // "/auth/sso/login"
+}
+
+async function getSSOConfig(): Promise<SSOConfig> {
+  const res = await fetch(`${API_URL}/auth/sso/config`, {
+    credentials: "include",
+  });
+  const data = await res.json();
+  return data.data;
+}
+```
+
+Render the SSO button only when `enabled` is true — an unconfigured provider returns
+`{"enabled": false}`, and hitting `/auth/sso/login` anyway yields a `404`.
+
+### 2. Local login
+
+```tsx
+async function login(email: string, password: string): Promise<User> {
+  const res = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!res.ok) throw new Error("invalid credentials");
+  const data = await res.json();
+  return data.data; // the user — tokens arrive as Set-Cookie, not in the body
+}
+```
+
+> An SSO-provisioned account **cannot** log in here. `/auth/login` only matches
+> `auth_type = "local"`, and the failure is a generic `invalid credentials` — which looks like a
+> wrong password but means the user should have used the SSO button.
+
+### 3. SSO login button
+
+```tsx
+function SSOLoginButton({ config }: { config: SSOConfig }) {
+  if (!config.enabled) return null;
+
   const handleLogin = () => {
-    window.location.href = "https://your-api.com/forta/login";
+    sessionStorage.setItem("returnUrl", window.location.pathname);
+    window.location.href = `${API_URL}/auth/sso/login`;
   };
 
-  return <button onClick={handleLogin}>Sign in with Forta</button>;
+  return <button onClick={handleLogin}>{config.button_label}</button>;
 }
 ```
 
-### 2. Add Logout Button
+### 4. Logout
+
+Logout is a **protected POST**, not a navigation — so it needs the CSRF header.
 
 ```tsx
-function LogoutButton() {
-  const handleLogout = () => {
-    window.location.href = "https://your-api.com/forta/logout";
-  };
-
-  return <button onClick={handleLogout}>Sign out</button>;
+async function logout(): Promise<void> {
+  await fetch(`${API_URL}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "X-CSRF-Token": getCookie("ob-csrf") ?? "" },
+  });
+  window.location.href = "/login";
 }
 ```
 
-### 3. Get Current User (Protected)
+### 5. Get the current user
 
 ```tsx
 interface User {
   id: number;
   email: string;
   name: string | null;
-  display_name: string | null;
+  auth_type: "local" | "sso";
+  profile_image_url: string | null;
+  role: "admin" | "editor" | "viewer" | "pending";
+  active: boolean;
+  inserted_at: string;
+  updated_at: string;
 }
 
 async function getCurrentUser(): Promise<User | null> {
-  const response = await fetch("https://your-api.com/self", {
-    credentials: "include",
-  });
-
-  if (response.status === 401) {
-    return null; // not authenticated
-  }
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch user");
-  }
-
-  const data = await response.json();
+  const res = await fetch(`${API_URL}/auth/self`, { credentials: "include" });
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error("failed to fetch user");
+  const data = await res.json();
   return data.data;
 }
 ```
 
 ---
 
+## CSRF
+
+The API issues a non-HttpOnly `ob-csrf` cookie. **Every cookie-authenticated mutation must echo
+it back in an `X-CSRF-Token` header.** This is the most common cause of an unexplained `403` in
+a newly built client.
+
+```tsx
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp(`(^| )${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+function csrfHeaders(): Record<string, string> {
+  const token = getCookie("ob-csrf");
+  return token ? { "X-CSRF-Token": token } : {};
+}
+```
+
+Exempt from the check: safe methods (`GET`/`HEAD`/`OPTIONS`), any request using
+`Authorization: Bearer`, and `/auth/login`, `/auth/refresh`, `/auth/sso/callback`.
+
+Failures return `403` with error code `4030` (missing cookie) or `4031` (mismatch).
+
+---
+
 ## Sessions
 
-Create a session once to associate your S3 credentials with your Forta user. Sessions are stored server-side and automatically resolved for every bucket request — nothing needs to be stored or sent by the browser.
+A **session** binds a bucket, region, endpoint and S3 credentials to your user. Everything under
+`/core/v1/{sessionId}/` operates within it. There is no way to address a bucket without one.
 
-### Create a Session
+Sessions are stored server-side — nothing needs to be held or sent by the browser beyond the
+numeric ID in the URL path.
+
+### Create a session
 
 ```tsx
 interface Session {
@@ -101,55 +190,55 @@ async function createSession(params: {
   access_key_id?: string;
   secret_access_key?: string;
 }): Promise<Session> {
-  const response = await fetch("https://your-api.com/core/v1/session", {
+  const res = await fetch(`${API_URL}/core/v1/session`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify(params),
   });
 
-  if (!response.ok) throw new Error("Failed to create session");
-  const data = await response.json();
+  if (!res.ok) throw new Error("failed to create session");
+  const data = await res.json();
   return data.data;
 }
 ```
 
-### Use a Session
+Credentials are encrypted at rest and never returned — the session response carries only the
+public fields listed above.
 
-Fetch your sessions first to get session IDs, then include the session ID in the URL path. The API resolves the bucket and credentials from the session ID and verifies ownership against your Forta identity:
+### Use a session
 
 ```tsx
 async function listObjects(
   sessionId: number,
   prefix?: string,
 ): Promise<object[]> {
-  const url = new URL(`https://your-api.com/core/v1/${sessionId}/objects`);
+  const url = new URL(`${API_URL}/core/v1/${sessionId}/objects`);
   if (prefix) url.searchParams.set("prefix", prefix);
 
-  const response = await fetch(url.toString(), {
-    credentials: "include",
-  });
+  const res = await fetch(url.toString(), { credentials: "include" });
 
-  if (response.status === 400) throw new Error("Invalid session ID");
-  if (response.status === 404) throw new Error("Session not found");
-  if (response.status === 403)
-    throw new Error("Session belongs to another user");
-  if (!response.ok) throw new Error("Failed to list objects");
-  const data = await response.json();
+  if (res.status === 400) throw new Error("invalid session ID");
+  if (res.status === 404) throw new Error("session not found");
+  if (res.status === 403) throw new Error("session belongs to another user");
+  if (!res.ok) throw new Error("failed to list objects");
+  const data = await res.json();
   return data.data;
 }
 ```
 
-### List All Sessions
+> **Do not send a `bucket` parameter to a session-scoped endpoint.** The bucket always comes
+> from the session; handlers overwrite any caller-supplied value, so it is silently ignored.
+
+### List sessions
 
 ```tsx
 async function listSessions(): Promise<Session[]> {
-  const response = await fetch("https://your-api.com/core/v1/sessions", {
+  const res = await fetch(`${API_URL}/core/v1/sessions`, {
     credentials: "include",
   });
-
-  if (!response.ok) throw new Error("Failed to fetch sessions");
-  const data = await response.json();
+  if (!res.ok) throw new Error("failed to fetch sessions");
+  const data = await res.json();
   return data.data;
 }
 ```
@@ -158,9 +247,72 @@ Only sessions owned by the authenticated user are returned.
 
 ---
 
-## React Integration Example
+## API request helper
 
-### Auth Context
+One place to attach credentials, CSRF and the refresh-on-401 retry.
+
+```tsx
+// lib/api.ts
+const API_URL = import.meta.env.VITE_API_URL || "https://api.openbucket.appleby.cloud";
+
+let refreshPromise: Promise<boolean> | null = null;
+
+// Deduplicate concurrent refreshes — a page that fires five requests at once
+// must not fire five refreshes.
+function refreshTokens(): Promise<boolean> {
+  refreshPromise ??= fetch(`${API_URL}/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+  })
+    .then((r) => r.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshPromise = null;
+    });
+  return refreshPromise;
+}
+
+export async function api<T>(
+  endpoint: string,
+  options: RequestInit = {},
+  retry = true,
+): Promise<T> {
+  const res = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...csrfHeaders(),
+      ...(options.headers as Record<string, string>),
+    },
+  });
+
+  if (res.status === 401 && retry) {
+    if (await refreshTokens()) return api<T>(endpoint, options, false);
+    window.location.href = "/login";
+    throw new Error("unauthorized");
+  }
+
+  if (!res.ok) {
+    const err = await res
+      .json()
+      .catch(() => ({ error_message: "request failed" }));
+    throw new Error(err.error_message || "request failed");
+  }
+
+  return res.json();
+}
+
+// Usage:
+// const user = await api<{ data: User }>('/auth/self');
+// const objects = await api<{ data: object[] }>('/core/v1/42/objects');
+```
+
+---
+
+## React integration
+
+### Auth context
 
 ```tsx
 // contexts/AuthContext.tsx
@@ -172,25 +324,18 @@ import {
   ReactNode,
 } from "react";
 
-interface User {
-  id: number;
-  email: string;
-  name: string | null;
-  display_name: string | null;
-}
-
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: () => void;
-  logout: () => void;
+  isPending: boolean;
+  loginLocal: (email: string, password: string) => Promise<void>;
+  loginSSO: () => void;
+  logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const API_URL = import.meta.env.VITE_API_URL || "https://your-api.com";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -198,17 +343,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch(`${API_URL}/self`, {
-        credentials: "include",
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.data);
-      } else {
-        setUser(null);
-      }
-    } catch (error) {
-      console.error("Auth check failed:", error);
+      setUser(await getCurrentUser());
+    } catch {
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -219,18 +355,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth();
   }, []);
 
-  const login = () => {
+  const loginLocal = async (email: string, password: string) => {
+    setUser(await login(email, password));
+  };
+
+  const loginSSO = () => {
     sessionStorage.setItem("returnUrl", window.location.pathname);
-    window.location.href = `${API_URL}/forta/login`;
-  };
-
-  const logout = () => {
-    window.location.href = `${API_URL}/forta/logout`;
-  };
-
-  const refresh = async () => {
-    setIsLoading(true);
-    await checkAuth();
+    window.location.href = `${API_URL}/auth/sso/login`;
   };
 
   return (
@@ -239,9 +370,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isLoading,
         isAuthenticated: !!user,
-        login,
+        isPending: user?.role === "pending",
+        loginLocal,
+        loginSSO,
         logout,
-        refresh,
+        refresh: checkAuth,
       }}
     >
       {children}
@@ -250,182 +383,120 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
+  return ctx;
 }
 ```
 
-### Protected Route Component
+### Protected route
+
+Handle `pending` separately from unauthenticated — a freshly SSO-provisioned user *is*
+authenticated, they just have no access yet.
 
 ```tsx
 // components/ProtectedRoute.tsx
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-}
-
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading } = useAuth();
+export function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isPending, isLoading } = useAuth();
   const location = useLocation();
 
-  if (isLoading) {
-    return <div>Loading...</div>;
-  }
+  if (isLoading) return <div>Loading…</div>;
 
   if (!isAuthenticated) {
     sessionStorage.setItem("returnUrl", location.pathname);
     return <Navigate to="/login" replace />;
   }
 
+  if (isPending) return <Navigate to="/pending" replace />;
+
   return <>{children}</>;
 }
 ```
 
-### Header Component with Auth
+---
 
-```tsx
-// components/Header.tsx
-import { useAuth } from "../contexts/AuthContext";
+## Handling errors
 
-export function Header() {
-  const { user, isAuthenticated, isLoading, login, logout } = useAuth();
+### Handling 401
 
-  return (
-    <header>
-      <nav>
-        <a href="/">Home</a>
-        {isLoading ? (
-          <span>Loading...</span>
-        ) : isAuthenticated ? (
-          <>
-            <span>Welcome, {user?.display_name || user?.email}</span>
-            <button onClick={logout}>Sign out</button>
-          </>
-        ) : (
-          <button onClick={login}>Sign in</button>
-        )}
-      </nav>
-    </header>
-  );
-}
-```
+The access token expired or the credential is invalid. `POST /auth/refresh` and retry once; if
+the refresh also fails, the refresh token is gone too — send the user to login. The helper above
+does this automatically.
+
+For an SSO user a 401 can also mean the provider reported the grant inactive during a
+checkpoint, in which case refresh will fail and re-login is genuinely required.
+
+### 403 with error code 4004
+
+`your account is pending admin approval`. The user is authenticated but has role `pending`.
+Only `/auth/self` works — show a holding page rather than a login prompt.
+
+### 403 with error code 4030 / 4031
+
+Missing or mismatched CSRF token. Check that `X-CSRF-Token` is being sent on the mutation.
+
+### 403 `admin access required`
+
+Authenticated, wrong role. Distinct from `401 authentication required`.
 
 ---
 
-## API Request Helper
+## Post-login redirect
 
-```tsx
-// lib/api.ts
-const API_URL = import.meta.env.VITE_API_URL || "https://your-api.com";
-
-export async function api<T>(
-  endpoint: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers as Record<string, string>),
-    },
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      window.location.href = `${API_URL}/forta/login`;
-      throw new Error("Unauthorized");
-    }
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Request failed" }));
-    throw new Error(error.error || "Request failed");
-  }
-
-  return response.json();
-}
-
-// Usage examples:
-// const user = await api<{ data: User }>('/self');
-// const objects = await api<{ data: object[] }>('/core/v1/42/objects');
-```
-
----
-
-## Handling Post-Login Redirect
-
-After successful login the API redirects to `FORTA_POST_LOGIN_REDIRECT` (default: `/`). To redirect users back where they were:
+After SSO login the API redirects to `OB_SSO_POST_LOGIN_URL`. To send users back where they
+were, stash the path before redirecting and restore it on arrival:
 
 ```tsx
 // pages/Home.tsx
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
-
-export function Home() {
-  const { isAuthenticated, isLoading } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      const returnUrl = sessionStorage.getItem("returnUrl");
-      if (returnUrl) {
-        sessionStorage.removeItem("returnUrl");
-        navigate(returnUrl, { replace: true });
-      }
+useEffect(() => {
+  if (!isLoading && isAuthenticated) {
+    const returnUrl = sessionStorage.getItem("returnUrl");
+    if (returnUrl) {
+      sessionStorage.removeItem("returnUrl");
+      navigate(returnUrl, { replace: true });
     }
-  }, [isAuthenticated, isLoading, navigate]);
-
-  return <div>Welcome to OpenBucket</div>;
-}
+  }
+}, [isAuthenticated, isLoading, navigate]);
 ```
 
 ---
 
-## CORS Configuration
+## CORS
 
-Your frontend origin must be in the API's CORS allowed origins. The API currently allows:
+Your frontend origin must be in the API's allowlist (`main.go`). Currently:
 
 - `https://openbucket.local.appleby.cloud:3010` (local dev)
 - `https://openbucket.appleby.cloud` (production)
 
-If your frontend is hosted elsewhere, update the CORS configuration in `main.go`.
+`AllowCredentials` is on, and `X-CSRF-Token` is in the allowed-headers list — a new custom
+header would need adding there too.
+
+## Cookies across subdomains
+
+For cookies to work across e.g. `openbucket.appleby.cloud` and `api.openbucket.appleby.cloud`:
+
+1. Set `OB_COOKIE_DOMAIN=.appleby.cloud` on the API
+2. Both frontend and API must use HTTPS, unless `OB_COOKIE_INSECURE=true` for local dev
+
+Cookies are `SameSite=Lax`, so a cross-site (not merely cross-subdomain) frontend will not
+receive them.
 
 ---
 
-## Cookie Configuration
+## Testing locally
 
-For cookies to work across subdomains (e.g., `openbucket.appleby.cloud` and `api.appleby.cloud`):
-
-1. Set `FORTA_COOKIE_DOMAIN=.appleby.cloud` on the API
-2. Both frontend and API must use HTTPS (unless `FORTA_COOKIE_INSECURE=true` for local dev)
-
----
-
-## Error Handling
-
-### 401 Unauthorized
-
-The user's session has expired or is invalid. Redirect to login:
-
-```tsx
-if (response.status === 401) {
-  window.location.href = `${API_URL}/forta/login`;
-}
-```
-
-### Auto-Refresh
-
-The API automatically refreshes expired access tokens using the refresh token cookie. If auto-refresh fails (e.g., refresh token also expired), you'll receive a `401`.
+1. Start the API with `OB_COOKIE_INSECURE=true` if serving over HTTP
+2. Add your local frontend URL to the CORS allowlist in `main.go`
+3. Use the same parent domain (e.g. `*.local.appleby.cloud`) so cookies are shared
+4. Check DevTools → Application → Cookies for `ob-access-token`, `ob-refresh-token`,
+   `ob-logged-in` and `ob-csrf`
 
 ---
 
-## TypeScript Types
+## TypeScript types
 
 ```tsx
 // types/api.ts
@@ -434,7 +505,13 @@ export interface User {
   id: number;
   email: string;
   name: string | null;
-  display_name: string | null;
+  auth_type: "local" | "sso";
+  sso_subject?: string;
+  profile_image_url: string | null;
+  role: "admin" | "editor" | "viewer" | "pending";
+  active: boolean;
+  inserted_at: string;
+  updated_at: string;
 }
 
 export interface Session {
@@ -447,33 +524,34 @@ export interface Session {
   updated_at: string;
 }
 
-export interface ErrorResponse {
-  error: string;
+export interface ApiSuccess<T> {
+  success: true;
+  message: string;
+  data: T;
+}
+
+export interface ApiError {
+  error: string | null;
+  error_message: string;
+  error_code: number;
 }
 ```
 
 ---
 
-## Testing Authentication Locally
-
-1. Start the API with `FORTA_COOKIE_INSECURE=true` for HTTP development
-2. Ensure your local frontend URL is in CORS allowed origins
-3. Use the same domain pattern (e.g., `*.local.appleby.cloud`) for cookie sharing
-4. Check browser DevTools → Application → Cookies to verify tokens are set
-
----
-
 ## Checklist
 
-- [ ] Frontend URL added to API CORS config
-- [ ] `credentials: 'include'` on all fetch requests
-- [ ] Login button redirects to `/forta/login`
-- [ ] Logout button redirects to `/forta/logout`
-- [ ] Auth status determined by calling `/self` (200 = authenticated, 401 = not)
-- [ ] Sessions created via `POST /core/v1/session`
-- [ ] All sessions listed via `GET /core/v1/sessions`
-- [ ] Session ID included in bucket route path (`/core/v1/{sessionId}/...`)
-- [ ] `404`/`403` on bucket requests handled (session not found or wrong user)
-- [ ] Protected routes redirect unauthenticated users
-- [ ] 401 errors trigger re-authentication
-- [ ] Cookie domain configured for cross-subdomain (if needed)
+- [ ] Frontend URL added to the API CORS allowlist
+- [ ] `credentials: "include"` on every fetch
+- [ ] `X-CSRF-Token` sent on every cookie-authenticated mutation
+- [ ] SSO button rendered only when `GET /auth/sso/config` returns `enabled: true`
+- [ ] Local login posts to `/auth/login`; tokens read from cookies, not the body
+- [ ] Logout is a `POST` to `/auth/logout`, not a navigation
+- [ ] Auth state determined by `GET /auth/self` (200 = authenticated, 401 = not)
+- [ ] 401 triggers a single deduplicated `POST /auth/refresh` and one retry
+- [ ] `pending` role handled distinctly from unauthenticated (403 / error code 4004)
+- [ ] Sessions created via `POST /core/v1/session`, listed via `GET /core/v1/sessions`
+- [ ] Session ID included in the bucket route path (`/core/v1/{sessionId}/…`)
+- [ ] No `bucket` parameter sent to session-scoped endpoints — it is ignored
+- [ ] `400`/`403`/`404` on bucket requests handled distinctly
+- [ ] `OB_COOKIE_DOMAIN` configured for cross-subdomain use
