@@ -21,6 +21,7 @@ func HandleAdminGetSSOConfig(w http.ResponseWriter, r *http.Request) {
 		"client_id":       cfg.ClientID,
 		"authorize_url":   cfg.AuthorizeURL,
 		"token_url":       cfg.TokenURL,
+		"introspect_url":  cfg.IntrospectURL,
 		"userinfo_url":    cfg.UserInfoURL,
 		"redirect_url":    cfg.RedirectURL,
 		"logout_url":      cfg.LogoutURL,
@@ -42,6 +43,7 @@ type UpdateSSOConfigRequest struct {
 	AuthorizeURL   *string `json:"authorize_url"`
 	TokenURL       *string `json:"token_url"`
 	UserInfoURL    *string `json:"userinfo_url"`
+	IntrospectURL  *string `json:"introspect_url"`
 	RedirectURL    *string `json:"redirect_url"`
 	LogoutURL      *string `json:"logout_url"`
 	Scopes         *string `json:"scopes"`
@@ -78,6 +80,15 @@ func HandleAdminUpdateSSOConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Validated on the same terms as its siblings. This one is a server-to-server
+	// POST carrying the user's token and this service's client credentials, so an
+	// unvalidated value here would send both to wherever an admin typed.
+	if body.IntrospectURL != nil && *body.IntrospectURL != "" {
+		if err := tools.ValidateExternalURL(*body.IntrospectURL); err != nil {
+			responder.SendError(w, http.StatusBadRequest, "introspect_url: "+err.Error())
+			return
+		}
+	}
 
 	// Apply updates
 	if body.Enabled != nil {
@@ -106,6 +117,14 @@ func HandleAdminUpdateSSOConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.UserInfoURL != nil {
 		_ = query.SetSetting(db.DB, "sso.userinfo_url", *body.UserInfoURL)
+	}
+	// ⚠️ WITHOUT THIS THE REVOCATION CHECKPOINT CANNOT RUN.
+	//
+	// LoadConfig has always read sso.introspect_url, but no handler ever wrote it —
+	// so it was env-only and unset in production, and Introspect had no endpoint to
+	// call. For forta-api the value is https://auth.appleby.cloud/oauth/introspect.
+	if body.IntrospectURL != nil {
+		_ = query.SetSetting(db.DB, "sso.introspect_url", *body.IntrospectURL)
 	}
 	if body.RedirectURL != nil {
 		_ = query.SetSetting(db.DB, "sso.redirect_url", *body.RedirectURL)

@@ -13,6 +13,7 @@ var userColumns = []string{
 	"users.email",
 	"users.name",
 	"users.auth_type",
+	"users.tokens_revoked_at",
 	"users.password_hash",
 	"users.sso_subject",
 	"users.profile_image_url",
@@ -31,6 +32,7 @@ func scanUser(row interface {
 		&u.Email,
 		&u.Name,
 		&u.AuthType,
+		&u.TokensRevokedAt,
 		&u.PasswordHash,
 		&u.SSOSubject,
 		&u.ProfileImageURL,
@@ -245,5 +247,25 @@ func UpdateUser(engine db.Queryable, id int, req UpdateUserRequest) (*structs.Us
 
 func DeleteUser(engine db.Queryable, id int) error {
 	_, err := engine.Exec("UPDATE users SET active = 0 WHERE id = ?", id)
+	return err
+}
+
+// RevokeUserTokens stamps tokens_revoked_at = NOW() for a user, invalidating every
+// OpenBucket JWT they currently hold.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️ THIS IS WHAT ACTUALLY LOCKS A REVOKED SSO USER OUT.
+//
+// Before this existed, the checkpoint responded to an inactive upstream grant by
+// deleting the sso_sessions row. That 401'd the request in flight and nothing
+// else: the NEXT request found no row, took the "not an SSO session, allow"
+// branch, and the user was back in for the full life of their existing tokens.
+// Revocation was effective for exactly one request.
+//
+// validateToken compares the token's `iat` against this stamp, so a stamp
+// invalidates access AND refresh tokens at once, with no per-token bookkeeping.
+// ─────────────────────────────────────────────────────────────────────────────
+func RevokeUserTokens(engine db.Queryable, userID int64) error {
+	_, err := engine.Exec("UPDATE users SET tokens_revoked_at = NOW() WHERE id = ?", userID)
 	return err
 }

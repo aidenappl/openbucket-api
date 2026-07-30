@@ -39,6 +39,14 @@ environment variables.
 Leave unset to run with local accounts only. These are also editable at runtime through
 `GET|PUT /admin/sso-config`, which takes precedence over the environment.
 
+The flow itself is [`go-forta/sso`](https://github.com/aidenappl/go-forta/tree/main/sso) — the
+shared relying-party implementation, with PKCE S256, single-use server-side state, and a bounded
+revocation checkpoint.
+
+⚠️ **Set `OB_SSO_INTROSPECT_URL` (or `introspect_url` via the admin API) or the revocation
+checkpoint cannot run** — without it there is no endpoint to ask whether a grant is still live,
+and an upstream revocation stays invisible until the local session expires.
+
 | Variable                 | Default                | Description                            |
 | ------------------------ | ---------------------- | -------------------------------------- |
 | `OB_SSO_CLIENT_ID`       | ``                     | OIDC client ID                         |
@@ -50,7 +58,7 @@ Leave unset to run with local accounts only. These are also editable at runtime 
 | `OB_SSO_REDIRECT_URL`    | ``                     | This service's `/auth/sso/callback` URL |
 | `OB_SSO_LOGOUT_URL`      | ``                     | Provider logout endpoint               |
 | `OB_SSO_SCOPES`          | `openid email profile` | Requested scopes                       |
-| `OB_SSO_USER_IDENTIFIER` | `email`                | Userinfo field used to match the user  |
+| `OB_SSO_USER_IDENTIFIER` | `email`                | ⚠️ **Vestigial — read by nothing.** It used to name the claim treated as the identity, defaulting to `email`, and that value was stored as the subject. Identity keyed on a reassignable address is an account-takeover primitive; the standard `sub` is used now. Retained so existing config does not error |
 | `OB_SSO_BUTTON_LABEL`    | `Sign in with SSO`     | Label returned by `/auth/sso/config`   |
 | `OB_SSO_AUTO_PROVISION`  | `true`                 | Create a `pending` user for unknown identities |
 | `OB_SSO_POST_LOGIN_URL`  | ``                     | Redirect target after a successful login |

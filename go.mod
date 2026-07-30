@@ -1,9 +1,10 @@
 module github.com/aidenappl/openbucket-api
 
-go 1.25.0
+go 1.25.5
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
+	github.com/aidenappl/go-forta v1.6.0
 	github.com/aidenappl/go-keyring v1.0.2
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/go-sql-driver/mysql v1.9.3
@@ -15,7 +16,10 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/coreos/go-oidc/v3 v3.20.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
+	golang.org/x/oauth2 v0.36.0 // indirect
 )

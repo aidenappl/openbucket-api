@@ -2,11 +2,13 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
+	ssolib "github.com/aidenappl/go-forta/sso"
 	"github.com/aidenappl/openbucket-api/db"
 	"github.com/aidenappl/openbucket-api/jwt"
 	"github.com/aidenappl/openbucket-api/query"
@@ -151,13 +153,35 @@ func validateToken(tokenStr string) *structs.User {
 		return validateApiToken(tokenStr)
 	}
 
-	userID, err := jwt.ValidateAccessToken(tokenStr)
+	claims, err := jwt.ValidateAccessTokenClaims(tokenStr)
 	if err != nil {
 		return nil
 	}
+	userID := claims.UserID
 
 	user, err := query.GetUserByID(db.DB, userID)
 	if err != nil || user == nil || !user.Active {
+		return nil
+	}
+
+	// ── Revocation cut-off ───────────────────────────────────────────────────
+	//
+	// ⚠️ THIS IS WHAT MAKES SSO REVOCATION STICK, and without it the checkpoint
+	// below is nearly useless. Deleting the sso_sessions row 401s the request in
+	// flight and nothing more: the next request finds no row, takes the "not an
+	// SSO session, allow" branch, and the user is back in for the full life of
+	// their tokens. Revocation was effective for exactly one request.
+	//
+	// Comparing `iat` against the stamp invalidates access and refresh tokens
+	// together, with no per-token bookkeeping. It costs nothing — the user row was
+	// already loaded above.
+	//
+	// NOT-BEFORE, not equality: a token issued in the same second as the stamp is
+	// rejected. MySQL DATETIME has second granularity, so allowing equality would
+	// leave a one-second window in which a token minted during the revocation
+	// survives it.
+	if user.TokensRevokedAt != nil && claims.IssuedAt != nil &&
+		!claims.IssuedAt.Time.After(*user.TokensRevokedAt) {
 		return nil
 	}
 
@@ -168,54 +192,55 @@ func validateToken(tokenStr string) *structs.User {
 	return user
 }
 
-// checkpointSSOGrant re-validates the user's grant against the IDP on a TTL.
-// Returns true if the grant is still active (or the check is skipped because
-// it ran recently). Returns false if the IDP reports active=false — in which
-// case the sso_sessions row is deleted and the caller MUST 401 the request,
-// killing the local session.
+// ssoCheckpointer is the shared checkpoint implementation, built once.
 //
-// Network errors fail-open (return true) — a transient IDP outage shouldn't
-// log users out, but it does mean revocation latency gets a small extra
-// budget during incidents.
-func checkpointSSOGrant(userID int64) bool {
-	sess, err := query.GetSSOSession(db.DB, userID)
-	if err != nil {
-		log.Printf("checkpointSSOGrant: db lookup: %v (allowing request)", err)
-		return true
-	}
-	if sess == nil {
-		// SSO user with no stored provider tokens — pre-checkpoint legacy state.
-		// Treat as still valid; the next SSO login will populate the row.
-		return true
-	}
-	if time.Since(sess.LastCheckedAt) < ssoCheckpointTTL {
-		return true
-	}
-
-	refreshToken, err := tools.Decrypt(sess.RefreshToken)
-	if err != nil {
-		log.Printf("checkpointSSOGrant: decrypt refresh token: %v", err)
-		return true
-	}
-
-	resp, err := sso.Introspect(refreshToken, "refresh_token")
-	if err != nil {
-		log.Printf("checkpointSSOGrant: introspect call failed: %v (allowing request)", err)
-		return true
-	}
-
-	if !resp.Active {
-		log.Printf("checkpointSSOGrant: IDP reports inactive for user %d, killing local session", userID)
-		if delErr := query.DeleteSSOSession(db.DB, userID); delErr != nil {
-			log.Printf("checkpointSSOGrant: failed to delete sso_session: %v", delErr)
+// The policy — 5-minute interval, 30-minute bounded grace measured from the last
+// real answer, immediate action on a definitive active:false, and a hard
+// distinction between "the IdP said no" and "the IdP did not answer" — lives in
+// go-forta/sso so all three services share one copy of it.
+var ssoCheckpointer = &ssolib.Checkpointer{
+	Sessions: sso.NewSessionStore(),
+	Providers: func(_ context.Context, slug string) (*ssolib.Provider, error) {
+		if slug != sso.ProviderSlug {
+			return nil, fmt.Errorf("auth: unknown sso provider %q", slug)
 		}
-		return false
-	}
+		// Re-resolved every check, so a rotated secret or a newly-set introspect_url
+		// takes effect at the next checkpoint rather than the next restart.
+		return sso.LoadConfig().Provider(), nil
+	},
+	Interval: ssoCheckpointTTL,
+	Logf:     log.Printf,
+}
 
-	if err := query.TouchSSOSession(db.DB, userID); err != nil {
-		log.Printf("checkpointSSOGrant: touch failed: %v", err)
+// checkpointSSOGrant re-validates the user's grant against the IdP on a TTL.
+//
+// ⚠️ WHAT CHANGED, AND WHY IT MATTERS MORE THAN IT LOOKS.
+//
+// The previous version failed open on ANY error with no bound — a permanently
+// unreachable IdP meant permanently trusted sessions. It now fails open only inside
+// a 30-minute window measured from the last positive confirmation, then denies.
+//
+// And on a definitive active:false it now stamps users.tokens_revoked_at through
+// the library's LocalTokenRevoker, not just deletes the session row. Deleting the
+// row alone made revocation last exactly ONE request: the next request found no row
+// and took the "not an SSO session, allow" branch. See
+// sso.SessionStore.RevokeLocalTokens.
+//
+// ⚠️ CheckpointUnavailable should be HTTP 503, not 401, and this bool signature
+// cannot express it. A 401 sends clients to re-authenticate against the IdP that is
+// already unreachable. Denying is still correct of the two options available, since
+// allowing restores the unbounded fail-open. Widening the hook is the fix.
+func checkpointSSOGrant(userID int64) bool {
+	switch ssoCheckpointer.Check(context.Background(), userID) {
+	case ssolib.CheckpointRevoked:
+		log.Printf("checkpointSSOGrant: upstream grant revoked for user %d, session terminated", userID)
+		return false
+	case ssolib.CheckpointUnavailable:
+		log.Printf("checkpointSSOGrant: unverifiable past grace window for user %d, denying (should be 503)", userID)
+		return false
+	default:
+		return true
 	}
-	return true
 }
 
 func extractBearerToken(r *http.Request) string {

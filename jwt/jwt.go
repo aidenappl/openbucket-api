@@ -84,14 +84,27 @@ func ValidateToken(tokenStr string) (*Claims, error) {
 }
 
 func ValidateAccessToken(tokenStr string) (int, error) {
-	claims, err := ValidateToken(tokenStr)
+	claims, err := ValidateAccessTokenClaims(tokenStr)
 	if err != nil {
 		return 0, err
 	}
-	if claims.Type != "access" {
-		return 0, fmt.Errorf("expected access token, got %s", claims.Type)
-	}
 	return claims.UserID, nil
+}
+
+// ValidateAccessTokenClaims validates an access token and returns its full claims.
+//
+// The caller needs `iat` to compare against users.tokens_revoked_at, which is what
+// makes SSO revocation stick — see middleware.validateToken. ValidateAccessToken is
+// kept as the narrow form for the many call sites that only want a user id.
+func ValidateAccessTokenClaims(tokenStr string) (*Claims, error) {
+	claims, err := ValidateToken(tokenStr)
+	if err != nil {
+		return nil, err
+	}
+	if claims.Type != "access" {
+		return nil, fmt.Errorf("expected access token, got %s", claims.Type)
+	}
+	return claims, nil
 }
 
 func ValidateRefreshToken(tokenStr string) (int, error) {

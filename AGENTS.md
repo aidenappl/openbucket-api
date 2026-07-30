@@ -40,6 +40,10 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
   any SSO provider's key**).
 - **Secrets:** config is loaded from **Keyring** at startup via `env.Init()`.
 - **CORS:** `github.com/rs/cors` with an explicit allowlist.
+- **SSO:** `github.com/aidenappl/go-forta/sso` **v1.6.0** — the shared relying-party SSO
+  implementation. ⚠️ Only the `sso` SUBPACKAGE. The root `forta` package validates Forta's own
+  tokens for a service that delegated identity to Forta; OpenBucket has its own users and its own
+  JWTs, and uses `sso` to run a login flow against any OIDC provider.
 
 ## Project structure
 
@@ -112,15 +116,54 @@ client must scrape `Set-Cookie` or use an `obk_` token.
 log in with a password no matter what it supplies — the failure is `invalid credentials`, which
 looks like a wrong password but means "wrong auth path".
 
-**SSO sessions are re-checkpointed** against the SSO provider on a 5-minute TTL
-(`ssoCheckpointTTL`). If the IDP reports the grant inactive, the `sso_sessions` row is deleted
-and the request 401s. Network errors **fail open** deliberately — a transient IDP outage must
-not log everyone out.
+**SSO sessions are re-checkpointed** against the provider on a 5-minute TTL
+(`ssoCheckpointTTL`), by `go-forta/sso`'s `Checkpointer`. Three outcomes:
 
-**The SSO client is provider-agnostic.** `ExchangeCode` tries three token-endpoint conventions
-(JSON body, HTTP Basic, form body) and `doTokenRequest`/`FetchUserInfo` accept both flat OAuth2
-responses and providers that wrap them in a `{"success": true, "data": {…}}` envelope. Those
-fallbacks exist because real providers deviate from the spec — do not remove them.
+| Provider says | Result |
+|---|---|
+| `active: false` | **Revoked** — session deleted AND `users.tokens_revoked_at` stamped. No grace. |
+| No answer, within 30 min of the last real answer | **Allowed** — a transient outage must not log everyone out |
+| No answer, past that window | **Denied** — unbounded fail-open makes revocation unenforceable |
+
+⚠️ **REVOCATION USED TO LAST EXACTLY ONE REQUEST.** The old checkpoint deleted the
+`sso_sessions` row and returned false, so the request in flight 401'd — and the *next* request
+found no row, took the `sess == nil` → allow branch, and let the user back in for the full life
+of their JWTs. Deleting the row cannot lock anyone out, because OpenBucket validates its own JWTs
+locally with no reference to it. `users.tokens_revoked_at` (migration 008) is what bites:
+`validateToken` rejects any token whose `iat` is not after the stamp, killing access and refresh
+tokens together.
+
+⚠️ **`CheckpointUnavailable` should be HTTP 503, not 401.** The middleware hook returns a bool
+and cannot express it. Denying is right of the two options — allowing restores the unbounded
+fail-open — but a 401 sends clients to re-authenticate against the provider that is already down.
+
+**The SSO protocol lives in the shared module now.** This file previously said `ExchangeCode`
+tried three token-endpoint conventions (JSON body, HTTP Basic, form body) and instructed **"do
+not remove them"**. That instruction was wrong, and following it kept a real defect alive:
+
+- Against an authorization server that treats codes as **single-use** — which any conforming one
+  does, and forta-api provably does — the first attempt to reach the server **consumes the
+  code**, so the fallbacks could only ever receive `invalid_grant`. It was never a compatibility
+  layer; it was a guaranteed wasted round trip on every login, visible in forta-api's logs as a
+  400 immediately followed by a 200.
+- There was **no PKCE at all**, so a leaked authorization code was redeemable by anyone holding
+  it. The library now sends an S256 challenge on every authorization request.
+- `GetUserIdentifier` returned whatever `sso.user_identifier` named — **email** by default — and
+  the result was stored as the subject. Identity keyed on a reassignable address is an
+  account-takeover primitive. The library reads the standard `sub`; `user_identifier` is retained
+  in the admin API for compatibility and **read by nothing**.
+- `ValidateState` read then unconditionally deleted, so two concurrent callbacks presenting the
+  same state **both passed**. `query.DeleteSettingExisted` makes the DELETE decide the winner.
+- There was **no browser binding** on state. `sso.StateCookie` adds it.
+- `crypto/rand` failure **panicked**, taking the process down. It now fails the login.
+
+The `{"success": true, "data": {…}}` envelope tolerance is the one fallback that survived, and it
+lives in the library's OAuth2 adapter — several first-party APIs here wrap every response that
+way.
+
+⚠️ **`introspect_url` is now settable** via `PUT /admin/sso-config`. It was read by `LoadConfig`
+but written by no handler, so it was env-only and unset — meaning the checkpoint had no endpoint
+to call and could not have worked regardless of the above.
 
 ### CSRF
 
