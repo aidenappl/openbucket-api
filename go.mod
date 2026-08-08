@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/aidenappl/go-forta v1.6.0
+	github.com/aidenappl/go-forta v1.9.0
 	github.com/aidenappl/go-keyring v1.0.2
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/go-sql-driver/mysql v1.9.3
@@ -21,5 +21,6 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
+	golang.org/x/image v0.44.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 )
