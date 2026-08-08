@@ -71,6 +71,12 @@ func main() {
 	r.HandleFunc("/auth/sso/login", routers.HandleSSOLogin).Methods(http.MethodGet)
 	r.HandleFunc("/auth/sso/callback", routers.HandleSSOCallback).Methods(http.MethodGet)
 
+	// OIDC Back-Channel Logout 1.0 §2.5 — a form POST from the identity provider,
+	// not from a browser. Public by necessity: the caller holds no OpenBucket
+	// session, and its only authentication is the signature on the logout token.
+	// Exempt from CSRF (see middleware/csrf.go) and must never move behind auth.
+	r.HandleFunc("/auth/sso/backchannel-logout", routers.HandleBackchannelLogout).Methods(http.MethodPost)
+
 	// ── Auth Endpoints (protected) ───────────────────────────────────────
 	r.HandleFunc("/auth/self", middleware.Protected(routers.HandleGetSelf)).Methods(http.MethodGet)
 	r.HandleFunc("/auth/self", middleware.Protected(routers.HandleUpdateSelf)).Methods(http.MethodPut)

@@ -161,6 +161,44 @@ The `{"success": true, "data": {…}}` envelope tolerance is the one fallback th
 lives in the library's OAuth2 adapter — several first-party APIs here wrap every response that
 way.
 
+### ⚠️ `sso.issuer_url` — OAuth2 vs OIDC is a security choice, not a preference
+
+The adapter is chosen by whether an issuer is configured (`SSOConfig.kind()`):
+
+| `sso.issuer_url` | Adapter | What you get |
+|---|---|---|
+| set | `KindOIDC` | discovery, a **signed id_token**, nonce verification, and `sid` |
+| empty | `KindOAuth2` | no id_token — identity comes from an **unsigned** UserInfo call |
+
+Without an issuer, anything able to obtain an access token can become that user, and there is no
+`sid`, so session-scoped back-channel logout is impossible. The OAuth2 fallback exists only so an
+existing deployment survives the upgrade; it is a state to leave, not to stay in. forta-api has
+published a conforming discovery document since Phase 1 — set `https://auth.appleby.cloud`.
+
+⚠️ **`sid` is captured only at login and cannot be backfilled** (migration 010 adds the column).
+Sessions established before the issuer is set have `sid NULL` forever and are reachable only by
+subject-wide logout. Users must re-login once after the switch.
+
+### Back-channel logout (`POST /auth/sso/backchannel-logout`)
+
+⚠️ **Deleting the `sso_sessions` row is NOT enough here, and this is where OpenBucket differs
+from a service that revalidates against its session table on every request.** OpenBucket issues
+its **own JWTs**, which outlive the row — so `DeleteSessionsBySID`/`BySubject` also stamp
+`tokens_revoked_at` via `RevokeLocalTokens`. go-forta's handler does not do this and has no way
+to know it is needed. Omitting it reintroduces the exact bug `RevokeLocalTokens` was written to
+fix, through a new path: revocation that is detected and not acted on.
+
+⚠️ **It is exempt from `CSRFMiddleware` and must stay exempt.** The notification is a
+server-to-server POST with no cookie and no auth header, so it otherwise hits the double-submit
+check it can never satisfy and is refused 403 (4030) — the provider retries six times, marks the
+delivery exhausted, and revocation silently stays at poll speed. monitor-core shipped that on
+2026-08-08 with a *passing* routing test, because the router was never what rejected it.
+`middleware/csrf_test.go` covers this half; a routing test cannot.
+
+⚠️ **It requires `sso.issuer_url`.** Verification needs the provider's JWKS, which only the OIDC
+adapter discovers; with an OAuth2 provider go-forta answers **501** rather than acting on a token
+it cannot verify.
+
 ⚠️ **`introspect_url` is now settable** via `PUT /admin/sso-config`. It was read by `LoadConfig`
 but written by no handler, so it was env-only and unset — meaning the checkpoint had no endpoint
 to call and could not have worked regardless of the above.

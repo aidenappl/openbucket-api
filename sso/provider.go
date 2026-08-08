@@ -17,20 +17,30 @@ const ProviderSlug = "sso"
 
 // Provider maps the stored SSOConfig onto the library's provider view.
 //
-// KindOAuth2: OpenBucket configures explicit endpoint URLs rather than an issuer,
-// so there is no discovery document and no id_token.
+// ⚠️ THE KIND IS CHOSEN BY WHETHER AN ISSUER IS CONFIGURED, and the difference is
+// a security one rather than a matter of taste.
 //
-// ⚠️ THAT IS A REAL LIMITATION. With no id_token there is no signed assertion of
-// identity — the subject comes from a bearer-token UserInfo call, so anything that
-// can obtain an access token can become that user. The upgrade is one config field
-// (an issuer URL) plus KindOIDC; forta-api has published a conforming discovery
-// document since Phase 1. PKCE applies either way and is enforced by the library.
+//   - IssuerURL set  → KindOIDC. The library discovers the provider's metadata,
+//     verifies a SIGNED id_token, checks the nonce, and surfaces `sid` — which is
+//     the only handle by which a back-channel logout can name one session.
+//   - IssuerURL empty → KindOAuth2, the legacy path. There is no id_token at all,
+//     so identity arrives from a bearer-token UserInfo call signed by nothing:
+//     anything that can obtain an access token can become that user.
+//
+// The fallback exists so an existing deployment keeps working across the upgrade,
+// NOT because the two are equivalent. Set sso.issuer_url and this becomes strictly
+// stronger; forta-api has published a conforming discovery document since Phase 1.
+// PKCE applies either way and is enforced by the library.
 func (c *SSOConfig) Provider() *ssolib.Provider {
 	return &ssolib.Provider{
 		Slug:        ProviderSlug,
 		DisplayName: c.ButtonLabel,
-		Kind:        ssolib.KindOAuth2,
+		Kind:        c.kind(),
+		IssuerURL:   c.IssuerURL,
 
+		// Ignored by the OIDC adapter, which discovers them. Kept populated so
+		// clearing the issuer falls back cleanly instead of to a half-configured
+		// provider that fails at the first redirect.
 		AuthorizeURL:  c.AuthorizeURL,
 		TokenURL:      c.TokenURL,
 		UserInfoURL:   c.UserInfoURL,
@@ -70,4 +80,12 @@ func (c *SSOConfig) Provider() *ssolib.Provider {
 // legitimate value.
 func LooksLikeEmail(subject string) bool {
 	return strings.Contains(subject, "@")
+}
+
+// kind reports which adapter this configuration should use. See Provider.
+func (c *SSOConfig) kind() ssolib.Kind {
+	if strings.TrimSpace(c.IssuerURL) != "" {
+		return ssolib.KindOIDC
+	}
+	return ssolib.KindOAuth2
 }

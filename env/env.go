@@ -30,6 +30,7 @@ var (
 	SSOClientID       string
 	SSOClientSecret   string
 	SSOAuthorizeURL   string
+	SSOIssuerURL      string
 	SSOTokenURL       string
 	SSOUserInfoURL    string
 	SSOIntrospectURL  string
@@ -73,6 +74,8 @@ func Init() {
 	SSOClientID = getOr(ctx, "OB_SSO_CLIENT_ID", "")
 	SSOClientSecret = getOr(ctx, "OB_SSO_CLIENT_SECRET", "")
 	SSOAuthorizeURL = getOr(ctx, "OB_SSO_AUTHORIZE_URL", "")
+	// Set this to upgrade SSO from OAuth2 to OIDC — see sso.SSOConfig.IssuerURL.
+	SSOIssuerURL = getOr(ctx, "OB_SSO_ISSUER_URL", "")
 	SSOTokenURL = getOr(ctx, "OB_SSO_TOKEN_URL", "")
 	SSOUserInfoURL = getOr(ctx, "OB_SSO_USERINFO_URL", "")
 	SSOIntrospectURL = getOr(ctx, "OB_SSO_INTROSPECT_URL", "")

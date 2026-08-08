@@ -33,9 +33,27 @@ func CSRFMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Skip exempt paths
+		// Skip exempt paths.
+		//
+		// ⚠️ /auth/sso/backchannel-logout IS NOT OPTIONAL HERE. It is a
+		// server-to-server POST from the identity provider (OIDC Back-Channel
+		// Logout 1.0 §2.5) carrying no cookie, no Bearer token and no custom
+		// header, so without this line it falls through to the double-submit check
+		// it can never satisfy and is refused 403 "missing CSRF cookie". The
+		// provider then retries six times, marks the delivery exhausted, and
+		// revocation silently stays at poll speed while the endpoint looks like a
+		// broken receiver. monitor-core shipped exactly that on 2026-08-08 and it
+		// took a live probe to find, because its routing test passed throughout.
+		//
+		// Exempting is correct rather than a concession: CSRF defends AMBIENT
+		// COOKIE AUTHORITY, and this endpoint has none — it reads no cookie and no
+		// session, and its sole authentication is the signature on the logout
+		// token, verified against the provider's JWKS. That is strictly stronger
+		// than a double-submit cookie, so the check can only reject the legitimate
+		// caller.
 		path := r.URL.Path
-		if path == "/auth/login" || path == "/auth/refresh" || path == "/auth/sso/callback" {
+		if path == "/auth/login" || path == "/auth/refresh" || path == "/auth/sso/callback" ||
+			path == "/auth/sso/backchannel-logout" {
 			next.ServeHTTP(w, r)
 			return
 		}

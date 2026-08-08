@@ -36,7 +36,11 @@ func (s *SessionStore) SaveSession(_ context.Context, userID int64, sess ssolib.
 	// provider issuing no refresh token either stored an empty string —
 	// indistinguishable from an encrypted empty value — or failed the insert and
 	// silently left the session uncheckpointed.
-	return query.UpsertSSOSession(db.DB, userID, encAccess, encRefresh)
+	// Subject and SID are persisted even though nothing reads them until a logout
+	// token arrives. Neither can be added later: `sid` lives only in the id_token
+	// of the login that created this row. It stays empty while sso.issuer_url is
+	// unset, because the OAuth2 adapter has no id_token at all.
+	return query.UpsertSSOSession(db.DB, userID, ProviderSlug, sess.Subject, sess.SID, encAccess, encRefresh)
 }
 
 // LoadSession returns the decrypted session, or (nil, nil) when the user has none.
@@ -68,9 +72,84 @@ func (s *SessionStore) LoadSession(_ context.Context, userID int64) (*ssolib.Ses
 
 	return &ssolib.Session{
 		Provider:      ProviderSlug,
+		Subject:       derefOr(row.Subject),
+		SID:           derefOr(row.SID),
 		Tokens:        ssolib.TokenSet{AccessToken: access, RefreshToken: refresh},
 		LastCheckedAt: row.LastCheckedAt,
 	}, nil
+}
+
+// derefOr flattens a nullable column. NULL and "" mean the same thing to every
+// caller here: this session cannot be addressed that way.
+func derefOr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BackchannelLogoutTarget — the receiving half of OIDC Back-Channel Logout 1.0.
+//
+// ⚠️ DELETING THE ROW IS NOT ENOUGH HERE, AND THIS IS WHERE OPENBUCKET DIFFERS
+// FROM A SERVICE THAT VALIDATES EVERY REQUEST AGAINST ITS SESSION TABLE.
+//
+// OpenBucket issues its OWN JWTs. They outlive the sso_sessions row, so a
+// back-channel logout that only deleted rows would end nothing the user notices —
+// the identical bug RevokeLocalTokens exists to fix on the checkpoint path,
+// reintroduced through a new one. go-forta's handler does not call
+// RevokeLocalTokens (it has no way to know it is needed), so stamping
+// tokens_revoked_at is this implementation's job.
+//
+// The user ids are therefore read BEFORE the delete: afterwards they are
+// unrecoverable.
+//
+// ⚠️ Both methods return (0, nil) for "nothing matched", never an error. A
+// duplicate delivery, an expired session and a pre-migration row all land here and
+// all are normal; an error would make the provider retry a message it had already
+// applied and then report this receiver as broken.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// DeleteSessionsBySID ends the single session with this OIDC session id.
+func (s *SessionStore) DeleteSessionsBySID(ctx context.Context, provider, sid string) (int, error) {
+	ids, err := query.SSOSessionUserIDsBySID(db.DB, provider, sid)
+	if err != nil {
+		return 0, err
+	}
+	n, err := query.DeleteSSOSessionsBySID(db.DB, provider, sid)
+	if err != nil {
+		return 0, err
+	}
+	return n, s.revokeAll(ctx, ids)
+}
+
+// DeleteSessionsBySubject ends every session this subject holds with the provider
+// — the correct scope for a subject-wide event such as a revoked grant.
+func (s *SessionStore) DeleteSessionsBySubject(ctx context.Context, provider, subject string) (int, error) {
+	ids, err := query.SSOSessionUserIDsBySubject(db.DB, provider, subject)
+	if err != nil {
+		return 0, err
+	}
+	n, err := query.DeleteSSOSessionsBySubject(db.DB, provider, subject)
+	if err != nil {
+		return 0, err
+	}
+	return n, s.revokeAll(ctx, ids)
+}
+
+// revokeAll stamps tokens_revoked_at for every affected user.
+//
+// A failure here is returned, not swallowed: the session row is already gone, so
+// if this does not land the user keeps working local tokens and the revocation
+// silently did nothing. Returning the error makes the receiver answer 500, which
+// makes the provider RETRY — the one case where a retry is exactly right.
+func (s *SessionStore) revokeAll(ctx context.Context, userIDs []int64) error {
+	for _, id := range userIDs {
+		if err := s.RevokeLocalTokens(ctx, id); err != nil {
+			return fmt.Errorf("sso: revoke local tokens for user %d: %w", id, err)
+		}
+	}
+	return nil
 }
 
 // TouchSession resets the checkpoint interval after a successful check.

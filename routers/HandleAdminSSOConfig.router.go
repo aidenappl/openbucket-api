@@ -19,6 +19,7 @@ func HandleAdminGetSSOConfig(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"enabled":         cfg.Enabled,
 		"client_id":       cfg.ClientID,
+		"issuer_url":      cfg.IssuerURL,
 		"authorize_url":   cfg.AuthorizeURL,
 		"token_url":       cfg.TokenURL,
 		"introspect_url":  cfg.IntrospectURL,
@@ -37,9 +38,11 @@ func HandleAdminGetSSOConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateSSOConfigRequest struct {
-	Enabled        *bool   `json:"enabled"`
-	ClientID       *string `json:"client_id"`
-	ClientSecret   *string `json:"client_secret"`
+	Enabled      *bool   `json:"enabled"`
+	ClientID     *string `json:"client_id"`
+	ClientSecret *string `json:"client_secret"`
+	// IssuerURL upgrades this provider from OAuth2 to OIDC. See sso.SSOConfig.
+	IssuerURL      *string `json:"issuer_url"`
 	AuthorizeURL   *string `json:"authorize_url"`
 	TokenURL       *string `json:"token_url"`
 	UserInfoURL    *string `json:"userinfo_url"`
@@ -62,6 +65,16 @@ func HandleAdminUpdateSSOConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate URLs if provided
+	// Validated identically to every other administrator-supplied URL this server
+	// will fetch: the issuer is where discovery, and therefore the JWKS used to
+	// verify id_tokens, is retrieved from. An unvalidated value here is an SSRF
+	// primitive that also decides which keys sign your users' identities.
+	if body.IssuerURL != nil && *body.IssuerURL != "" {
+		if err := tools.ValidateExternalURL(*body.IssuerURL); err != nil {
+			responder.SendError(w, http.StatusBadRequest, "issuer_url: "+err.Error())
+			return
+		}
+	}
 	if body.AuthorizeURL != nil && *body.AuthorizeURL != "" {
 		if err := tools.ValidateExternalURL(*body.AuthorizeURL); err != nil {
 			responder.SendError(w, http.StatusBadRequest, "authorize_url: "+err.Error())
@@ -108,6 +121,9 @@ func HandleAdminUpdateSSOConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = query.SetSetting(db.DB, "sso.client_secret", encrypted)
+	}
+	if body.IssuerURL != nil {
+		_ = query.SetSetting(db.DB, "sso.issuer_url", *body.IssuerURL)
 	}
 	if body.AuthorizeURL != nil {
 		_ = query.SetSetting(db.DB, "sso.authorize_url", *body.AuthorizeURL)
