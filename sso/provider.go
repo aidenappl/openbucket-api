@@ -38,6 +38,25 @@ func (c *SSOConfig) Provider() *ssolib.Provider {
 		Kind:        c.kind(),
 		IssuerURL:   c.IssuerURL,
 
+		// ⚠️ REQUIRED UNDER OIDC, and not merely an optimisation.
+		//
+		// forta-api's id_token deliberately carries NO email claim — OIDC Core §2
+		// requires `sub` to be stable and never reassigned, and Forta declines to
+		// put a reassignable address next to it. But this service REFUSES a login
+		// with no email (sso_no_email), because it keys local accounts on one.
+		//
+		// Under KindOAuth2 that was invisible: UserInfo was the only identity
+		// source, so email always arrived. Under KindOIDC the adapter reads the
+		// id_token and calls UserInfo ONLY when this is set — so switching to OIDC
+		// without it breaks every login with "the SSO provider did not return an
+		// email address". lattice-api hit exactly that on 2026-08-09.
+		//
+		// The extra round trip is the price of an email this provider will not put
+		// in a signed token. The library still enforces the OIDC Core §5.3.2 `sub`
+		// check on the response, so an unsigned UserInfo cannot change who you are —
+		// it can only add claims the id_token did not carry.
+		FetchUserInfo: true,
+
 		// Ignored by the OIDC adapter, which discovers them. Kept populated so
 		// clearing the issuer falls back cleanly instead of to a half-configured
 		// provider that fails at the first redirect.
