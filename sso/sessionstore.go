@@ -173,8 +173,14 @@ func (s *SessionStore) DeleteSession(_ context.Context, userID int64) error {
 // straight back in for the full life of their existing OpenBucket JWTs.
 //
 // Stamping tokens_revoked_at is what bites: middleware.validateToken rejects any
-// token whose `iat` is not after the stamp, so access and refresh tokens die
-// together. Migration 008 adds the column.
+// token whose `iat` is not after the stamp. Migration 008 adds the column.
+//
+// ⚠️ THAT IS ONLY HALF THE STORY, AND THE OTHER HALF WAS MISSING UNTIL
+// 2026-08-10. Killing the access token accomplishes nothing on its own, because
+// the client immediately calls /auth/refresh — and that handler checked only the
+// signature and user.Active, so it minted a fresh pair whose `iat` is
+// necessarily AFTER the stamp. The revocation undid itself in about a second.
+// HandleRefresh now performs the same comparison; the two must not diverge.
 // ─────────────────────────────────────────────────────────────────────────────
 func (s *SessionStore) RevokeLocalTokens(_ context.Context, userID int64) error {
 	return query.RevokeUserTokens(db.DB, userID)

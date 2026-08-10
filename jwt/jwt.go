@@ -108,12 +108,32 @@ func ValidateAccessTokenClaims(tokenStr string) (*Claims, error) {
 }
 
 func ValidateRefreshToken(tokenStr string) (int, error) {
-	claims, err := ValidateToken(tokenStr)
+	claims, err := ValidateRefreshTokenClaims(tokenStr)
 	if err != nil {
 		return 0, err
 	}
-	if claims.Type != "refresh" {
-		return 0, fmt.Errorf("expected refresh token, got %s", claims.Type)
-	}
 	return claims.UserID, nil
+}
+
+// ValidateRefreshTokenClaims is ValidateRefreshToken, but returns the whole
+// claim set.
+//
+// ⚠️ THE CALLER NEEDS `iat` TO HONOUR tokens_revoked_at, AND WITHOUT IT
+// REVOCATION DOES NOT WORK.
+//
+// Returning only the user id is what let HandleRefresh mint a fresh session for
+// a user whose tokens had just been revoked: the middleware rejected their
+// access token by comparing `iat` against users.tokens_revoked_at, the client
+// called /auth/refresh, and the refresh path — having no `iat` to compare —
+// issued new tokens whose `iat` is necessarily AFTER the stamp. The revocation
+// undid itself in about one second.
+func ValidateRefreshTokenClaims(tokenStr string) (*Claims, error) {
+	claims, err := ValidateToken(tokenStr)
+	if err != nil {
+		return nil, err
+	}
+	if claims.Type != "refresh" {
+		return nil, fmt.Errorf("expected refresh token, got %s", claims.Type)
+	}
+	return claims, nil
 }
