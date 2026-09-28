@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -53,9 +52,13 @@ func GetUserID(ctx context.Context) (int, bool) {
 // On success, injects *structs.User into the request context.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Carries the inbound ids to the SSO checkpoint only; the context handed
+		// to next is unchanged.
+		checkCtx := correlatedContext(r)
+
 		// Try Bearer token from Authorization header
 		if token := extractBearerToken(r); token != "" {
-			if user := validateToken(token); user != nil {
+			if user := validateToken(checkCtx, token); user != nil {
 				ctx := context.WithValue(r.Context(), UserContextKey, user)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
@@ -64,7 +67,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		// Try JWT from cookie
 		if cookie, err := r.Cookie(obAccessToken); err == nil && cookie.Value != "" {
-			if user := validateToken(cookie.Value); user != nil {
+			if user := validateToken(checkCtx, cookie.Value); user != nil {
 				ctx := context.WithValue(r.Context(), UserContextKey, user)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
@@ -146,7 +149,9 @@ func validateApiToken(tokenStr string) *structs.User {
 	return user
 }
 
-func validateToken(tokenStr string) *structs.User {
+// ctx is the request context, built by correlatedContext, so the SSO
+// checkpoint's introspection carries the inbound request/trace ids.
+func validateToken(ctx context.Context, tokenStr string) *structs.User {
 	// Opaque API tokens are resolved against the database rather than parsed
 	// as JWTs, so they are handled before JWT validation.
 	if tools.IsApiToken(tokenStr) {
@@ -185,7 +190,7 @@ func validateToken(tokenStr string) *structs.User {
 		return nil
 	}
 
-	if user.AuthType == "sso" && !checkpointSSOGrant(int64(userID)) {
+	if user.AuthType == "sso" && !checkpointSSOGrant(ctx, int64(userID)) {
 		return nil
 	}
 
@@ -198,18 +203,28 @@ func validateToken(tokenStr string) *structs.User {
 // real answer, immediate action on a definitive active:false, and a hard
 // distinction between "the IdP said no" and "the IdP did not answer" — lives in
 // go-forta/sso so all three services share one copy of it.
-var ssoCheckpointer = &ssolib.Checkpointer{
-	Sessions: sso.NewSessionStore(),
-	Providers: func(_ context.Context, slug string) (*ssolib.Provider, error) {
-		if slug != sso.ProviderSlug {
-			return nil, fmt.Errorf("auth: unknown sso provider %q", slug)
-		}
-		// Re-resolved every check, so a rotated secret or a newly-set introspect_url
-		// takes effect at the next checkpoint rather than the next restart.
-		return sso.LoadConfig().Provider(), nil
-	},
-	Interval: ssoCheckpointTTL,
-	Logf:     log.Printf,
+var ssoCheckpointer = newSSOCheckpointer(sso.NewSessionStore(), func(_ context.Context, slug string) (*ssolib.Provider, error) {
+	if slug != sso.ProviderSlug {
+		return nil, fmt.Errorf("auth: unknown sso provider %q", slug)
+	}
+	// Re-resolved every check, so a rotated secret or a newly-set introspect_url
+	// takes effect at the next checkpoint rather than the next restart.
+	return sso.LoadConfig().Provider(), nil
+})
+
+// newSSOCheckpointer builds the checkpointer with this service's policy and
+// logging. Split out so tests can supply a fake session store and provider.
+//
+// LogfCtx (go-forta v1.11.0) replaces the ctx-less Logf so checkpoint lines
+// carry the request's ids. Ids reach the IdP from the ctx passed to Check
+// (correlatedContext), so no Correlation hook is needed.
+func newSSOCheckpointer(sessions ssolib.SessionStore, providers func(context.Context, string) (*ssolib.Provider, error)) *ssolib.Checkpointer {
+	return &ssolib.Checkpointer{
+		Sessions:  sessions,
+		Providers: providers,
+		Interval:  ssoCheckpointTTL,
+		LogfCtx:   logfCtx,
+	}
 }
 
 // checkpointSSOGrant re-validates the user's grant against the IdP on a TTL.
@@ -230,13 +245,18 @@ var ssoCheckpointer = &ssolib.Checkpointer{
 // cannot express it. A 401 sends clients to re-authenticate against the IdP that is
 // already unreachable. Denying is still correct of the two options available, since
 // allowing restores the unbounded fail-open. Widening the hook is the fix.
-func checkpointSSOGrant(userID int64) bool {
-	switch ssoCheckpointer.Check(context.Background(), userID) {
+//
+// ctx must be the request context (correlatedContext): go-forta forwards the ids it
+// carries as X-Request-ID / X-Trace-ID / traceparent on the introspection call, so
+// the check is joinable to the request in the IdP's logs. context.Background()
+// carries nothing.
+func checkpointSSOGrant(ctx context.Context, userID int64) bool {
+	switch ssoCheckpointer.Check(ctx, userID) {
 	case ssolib.CheckpointRevoked:
-		log.Printf("checkpointSSOGrant: upstream grant revoked for user %d, session terminated", userID)
+		logfCtx(ctx, "checkpointSSOGrant: upstream grant revoked for user %d, session terminated", userID)
 		return false
 	case ssolib.CheckpointUnavailable:
-		log.Printf("checkpointSSOGrant: unverifiable past grace window for user %d, denying (should be 503)", userID)
+		logfCtx(ctx, "checkpointSSOGrant: unverifiable past grace window for user %d, denying (should be 503)", userID)
 		return false
 	default:
 		return true
