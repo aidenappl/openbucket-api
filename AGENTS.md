@@ -40,7 +40,7 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
   any SSO provider's key**).
 - **Secrets:** config is loaded from **Keyring** at startup via `env.Init()`.
 - **CORS:** `github.com/rs/cors` with an explicit allowlist.
-- **SSO:** `github.com/aidenappl/go-forta/sso` **v1.6.0** — the shared relying-party SSO
+- **SSO:** `github.com/aidenappl/go-forta/sso` **v1.11.0** — the shared relying-party SSO
   implementation. ⚠️ Only the `sso` SUBPACKAGE. The root `forta` package validates Forta's own
   tokens for a service that delegated identity to Forta; OpenBucket has its own users and its own
   JWTs, and uses `sso` to run a login flow against any OIDC provider.
@@ -54,7 +54,7 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 | `db/migrations/` | — | Numbered `.sql` files, applied at startup and tracked in `migrations_applied`. |
 | `env/env.go` | `env` | `Init()` resolves config from Keyring/env. |
 | `bootstrap/` | `bootstrap` | `EnsureAdminUser` — first-run admin from `OB_ADMIN_EMAIL`/`OB_ADMIN_PASSWORD`. |
-| `middleware/` | `middleware` | `AuthMiddleware`, `Protected`, `RequireAdmin`, `RequireEditor`, `RejectPending`, `SessionMiddleware`, `CSRFMiddleware`, logging. |
+| `middleware/` | `middleware` | `AuthMiddleware`, `Protected`, `RequireAdmin`, `RequireEditor`, `RejectPending`, `SessionMiddleware`, `CSRFMiddleware`, logging. `correlation.go`: inbound request/trace ids for the SSO checkpoint. |
 | `jwt/` | `jwt` | Access (15m) and refresh (7d) token minting/validation. Has tests. |
 | `query/` | `query` | `users`, `sessions`, `settings`, `instances`, `sso_sessions`, `api_tokens`. |
 | `routers/` | `routers` | Handlers. Some have tests (`HandleLogin_test.go`). |
@@ -124,6 +124,17 @@ looks like a wrong password but means "wrong auth path".
 | `active: false` | **Revoked** — session deleted AND `users.tokens_revoked_at` stamped. No grace. |
 | No answer, within 30 min of the last real answer | **Allowed** — a transient outage must not log everyone out |
 | No answer, past that window | **Denied** — unbounded fail-open makes revocation unenforceable |
+
+**Checkpoint correlation (go-forta v1.11.0).** `AuthMiddleware` builds a ctx with
+`correlatedContext(r)` — inbound `X-Request-ID`, and the trace id from a valid W3C `traceparent`
+else `X-Trace-ID`, each kept only if a UUID or 8–64 hex — and threads it through
+`validateToken(ctx, …)` → `checkpointSSOGrant(ctx, …)` → `Checkpointer.Check`. go-forta forwards
+those ids on the introspection call, so a checkpoint is findable in forta-api's logs by the same
+id. Checkpoint log lines go through `LogfCtx` (`log.Printf` + ` request_id=… trace_id=…`, never a
+token). There is **no request-id middleware** here, so the id is only whatever the client or
+proxy sent; with none, nothing is forwarded. ⚠️ Never pass `context.Background()` to `Check` —
+it carries no ids. The context handed to downstream handlers is unchanged. This service uses only
+the `sso` subpackage, so root `forta.Config` hooks (`OnAuthFailure`, `Correlation`) do not apply.
 
 ⚠️ **REVOCATION USED TO LAST EXACTLY ONE REQUEST.** The old checkpoint deleted the
 `sso_sessions` row and returned false, so the request in flight 401'd — and the *next* request

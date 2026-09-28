@@ -47,6 +47,10 @@ revocation checkpoint.
 checkpoint cannot run** — without it there is no endpoint to ask whether a grant is still live,
 and an upstream revocation stays invisible until the local session expires.
 
+The checkpoint's introspection call forwards the inbound `X-Request-ID` and trace id
+(`traceparent`, else `X-Trace-ID`) to the provider, and its log lines append
+`request_id=…`/`trace_id=…`, so a check can be matched to the provider's logs.
+
 | Variable                 | Default                | Description                            |
 | ------------------------ | ---------------------- | -------------------------------------- |
 | `OB_SSO_CLIENT_ID`       | ``                     | OIDC client ID                         |
