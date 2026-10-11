@@ -10,6 +10,7 @@ import (
 	"github.com/aidenappl/openbucket-api/env"
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/routers"
+	"github.com/aidenappl/openbucket-api/sso"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 )
@@ -68,14 +69,18 @@ func main() {
 	r.HandleFunc("/auth/login", routers.HandleLogin).Methods(http.MethodPost)
 	r.HandleFunc("/auth/refresh", routers.HandleRefresh).Methods(http.MethodPost)
 	r.HandleFunc("/auth/sso/config", routers.HandleSSOConfig).Methods(http.MethodGet)
-	r.HandleFunc("/auth/sso/login", routers.HandleSSOLogin).Methods(http.MethodGet)
-	r.HandleFunc("/auth/sso/callback", routers.HandleSSOCallback).Methods(http.MethodGet)
+	// SSO (go-oidc-session). Browser navigations: login accepts
+	// ?prompt=none&return_to= for silent re-authentication.
+	r.HandleFunc("/auth/sso/login", func(w http.ResponseWriter, r *http.Request) { sso.Manager().LoginHandler(w, r) }).Methods(http.MethodGet)
+	r.HandleFunc("/auth/sso/callback", func(w http.ResponseWriter, r *http.Request) { sso.Manager().CallbackHandler(w, r) }).Methods(http.MethodGet)
 
 	// OIDC Back-Channel Logout 1.0 §2.5 — a form POST from the identity provider,
 	// not from a browser. Public by necessity: the caller holds no OpenBucket
 	// session, and its only authentication is the signature on the logout token.
 	// Exempt from CSRF (see middleware/csrf.go) and must never move behind auth.
-	r.HandleFunc("/auth/sso/backchannel-logout", routers.HandleBackchannelLogout).Methods(http.MethodPost)
+	r.HandleFunc("/auth/sso/backchannel-logout", func(w http.ResponseWriter, r *http.Request) {
+		sso.Manager().BackchannelHandler(sso.ProviderSlug).ServeHTTP(w, r)
+	}).Methods(http.MethodPost)
 
 	// ── Auth Endpoints (protected) ───────────────────────────────────────
 	r.HandleFunc("/auth/self", middleware.Protected(routers.HandleGetSelf)).Methods(http.MethodGet)

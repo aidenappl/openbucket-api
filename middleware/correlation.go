@@ -7,11 +7,11 @@ import (
 	"regexp"
 	"strings"
 
-	ssolib "github.com/aidenappl/go-forta/sso"
+	oidcsession "github.com/aidenappl/go-oidc-session"
 )
 
 // correlationContextKey carries this request's correlation ids so log lines
-// written on its behalf (the SSO checkpoint's LogfCtx) can name them. go-forta
+// written on its behalf (the SSO session manager's diagnostics) can name them. go-oidc-session
 // keeps its own copy under an unexported key for the outbound introspection.
 const correlationContextKey contextKey = "correlation"
 
@@ -20,7 +20,7 @@ type correlationIDs struct {
 	TraceID   string
 }
 
-// correlationIDPattern is the id shape go-forta forwards and monitor-core
+// correlationIDPattern is the id shape go-oidc-session forwards and monitor-core
 // accepts: a UUID or 8-64 hex characters. Anything else is dropped — inbound
 // X-Request-ID is caller-supplied, and must never reach a log line unvalidated.
 var correlationIDPattern = regexp.MustCompile(`^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{8,64})$`)
@@ -54,12 +54,12 @@ func traceIDFrom(r *http.Request) string {
 }
 
 // correlatedContext returns r's context carrying the inbound request and trace
-// ids, both for go-forta (forwarded on SSO introspection to the IdP) and for
+// ids, both for go-oidc-session (forwarded on SSO token refreshes to the IdP) and for
 // this service's own checkpoint log lines. Invalid ids are dropped.
 func correlatedContext(r *http.Request) context.Context {
 	rid := validCorrelationID(r.Header.Get("X-Request-ID"))
 	tid := validCorrelationID(traceIDFrom(r))
-	ctx := ssolib.WithCorrelation(r.Context(), rid, tid)
+	ctx := oidcsession.WithCorrelation(r.Context(), rid, tid)
 	if rid == "" && tid == "" {
 		return ctx
 	}
@@ -72,8 +72,8 @@ func correlationFrom(ctx context.Context) (requestID, traceID string) {
 	return ids.RequestID, ids.TraceID
 }
 
-// logfCtx is the SSO checkpoint's LogfCtx: the stdlib log.Printf this service
-// uses everywhere, with the request's ids appended when present. go-forta's
+// logfCtx is the SSO session manager's diagnostics: the stdlib log.Printf this service
+// uses everywhere, with the request's ids appended when present. go-oidc-session's
 // checkpoint lines name a user id and provider slug, never a token.
 func logfCtx(ctx context.Context, format string, args ...any) {
 	rid, tid := correlationFrom(ctx)

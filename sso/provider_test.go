@@ -3,7 +3,7 @@ package sso
 import (
 	"testing"
 
-	ssolib "github.com/aidenappl/go-forta/sso"
+	oidcsession "github.com/aidenappl/go-oidc-session"
 )
 
 // TestProviderKindFollowsIssuer pins the security-relevant half of the OAuth2 →
@@ -26,19 +26,19 @@ import (
 func TestProviderKindFollowsIssuer(t *testing.T) {
 	t.Run("issuer_set_upgrades_to_oidc", func(t *testing.T) {
 		c := &SSOConfig{IssuerURL: "https://auth.appleby.cloud"}
-		if got := c.Provider().Kind; got != ssolib.KindOIDC {
+		if got := c.Provider().Kind; got != oidcsession.KindOIDC {
 			t.Fatalf("Kind = %v with an issuer configured, want %v. Without the OIDC adapter "+
 				"there is no signed id_token, so identity comes from an unsigned UserInfo "+
-				"response and no `sid` is available for back-channel logout.", got, ssolib.KindOIDC)
+				"response and no `sid` is available for back-channel logout.", got, oidcsession.KindOIDC)
 		}
 	})
 
 	t.Run("no_issuer_stays_oauth2", func(t *testing.T) {
 		c := &SSOConfig{AuthorizeURL: "https://auth.example/authorize"}
-		if got := c.Provider().Kind; got != ssolib.KindOAuth2 {
+		if got := c.Provider().Kind; got != oidcsession.KindOAuth2 {
 			t.Fatalf("Kind = %v with no issuer, want %v. The fallback is what keeps an "+
 				"existing deployment working across this upgrade; removing it breaks login "+
-				"for anyone who has not set sso.issuer_url yet.", got, ssolib.KindOAuth2)
+				"for anyone who has not set sso.issuer_url yet.", got, oidcsession.KindOAuth2)
 		}
 	})
 
@@ -47,8 +47,8 @@ func TestProviderKindFollowsIssuer(t *testing.T) {
 		// as configured would build an OIDC adapter whose discovery cannot resolve,
 		// failing every login instead of falling back.
 		c := &SSOConfig{IssuerURL: "   "}
-		if got := c.Provider().Kind; got != ssolib.KindOAuth2 {
-			t.Fatalf("Kind = %v for a whitespace-only issuer, want %v", got, ssolib.KindOAuth2)
+		if got := c.Provider().Kind; got != oidcsession.KindOAuth2 {
+			t.Fatalf("Kind = %v for a whitespace-only issuer, want %v", got, oidcsession.KindOAuth2)
 		}
 	})
 

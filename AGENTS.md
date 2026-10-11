@@ -40,10 +40,10 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
   any SSO provider's key**).
 - **Secrets:** config is loaded from **Keyring** at startup via `env.Init()`.
 - **CORS:** `github.com/rs/cors` with an explicit allowlist.
-- **SSO:** `github.com/aidenappl/go-forta/sso` **v1.11.0** — the shared relying-party SSO
-  implementation. ⚠️ Only the `sso` SUBPACKAGE. The root `forta` package validates Forta's own
-  tokens for a service that delegated identity to Forta; OpenBucket has its own users and its own
-  JWTs, and uses `sso` to run a login flow against any OIDC provider.
+- **SSO:** `github.com/aidenappl/go-oidc-session` — the shared, provider-agnostic OIDC client
+  (BFF pattern, RFC 10017). It runs the login, holds the provider's tokens server-side in
+  `oidc_sessions`, refreshes them when due and ends the session when the provider refuses.
+  Pinned at **v0.1.0**; upgrade with `go get github.com/aidenappl/go-oidc-session@vX.Y.Z`.
 
 ## Project structure
 
@@ -54,13 +54,13 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 | `db/migrations/` | — | Numbered `.sql` files, applied at startup and tracked in `migrations_applied`. |
 | `env/env.go` | `env` | `Init()` resolves config from Keyring/env. |
 | `bootstrap/` | `bootstrap` | `EnsureAdminUser` — first-run admin from `OB_ADMIN_EMAIL`/`OB_ADMIN_PASSWORD`. |
-| `middleware/` | `middleware` | `AuthMiddleware`, `Protected`, `RequireAdmin`, `RequireEditor`, `RejectPending`, `SessionMiddleware`, `CSRFMiddleware`, logging. `correlation.go`: inbound request/trace ids for the SSO checkpoint. |
+| `middleware/` | `middleware` | `AuthMiddleware`, `Protected`, `RequireAdmin`, `RequireEditor`, `RejectPending`, `SessionMiddleware`, `CSRFMiddleware`, logging. `correlation.go`: inbound request/trace ids, forwarded on SSO token refreshes. |
 | `jwt/` | `jwt` | Access (15m) and refresh (7d) token minting/validation. Has tests. |
-| `query/` | `query` | `users`, `sessions`, `settings`, `instances`, `sso_sessions`, `api_tokens`. |
+| `query/` | `query` | `users`, `sessions`, `settings`, `instances`, `api_tokens`. SSO sessions/states are `go-oidc-session/sqlstore`. |
 | `routers/` | `routers` | Handlers. Some have tests (`HandleLogin_test.go`). |
-| `structs/` | `structs` | `User`, `Session`, `Instance`, `SSOSession`, `ApiToken`. |
+| `structs/` | `structs` | `User`, `Session`, `Instance`, `ApiToken`. |
 | `tools/` | `tools` | `Password`, `Crypto`, `Validate`, `DecodeSession`, `ApiToken`. Several have tests. |
-| `sso/` | `sso` | Generic OIDC SSO client — no provider-specific code. |
+| `sso/` | `sso` | SSO config (`sso.*` settings) and `session.go`: the `go-oidc-session` `Manager` (rebuilt by `Reload()` on config save), the user resolver, and the token `Sealer` over `tools.Encrypt`. No provider-specific code. |
 | `responder/` | `responder` | Envelopes. **Note: no `QueryError` helper** — use `SendError(w, http.StatusInternalServerError, msg, err)`. |
 | `aws/` | `aws` | S3 client wrappers and error mapping. |
 
@@ -104,7 +104,8 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
 |-----------|----------|-------|
 | **`obk_` API token** | 30d/90d/365d/never | SHA-256 hash in `api_tokens`; resolved per request, so **revocation is immediate** |
 | **Access JWT** | 15 minutes | `Authorization: Bearer` or `ob-access-token` cookie |
-| **Refresh token** | 7 days | **Cookie only** (`ob-refresh-token`) — `/auth/refresh` reads no header |
+| **Refresh token** | 7 days | **Cookie only** (`ob-refresh-token`) — `/auth/refresh` reads no header. **Local-password users only.** |
+| **SSO session** | the identity provider's | `openbucket_session` cookie (opaque, HttpOnly, host-only on the API). SSO users get **no** OpenBucket JWTs. |
 
 `validateToken` checks the `obk_` prefix **before** attempting JWT parsing.
 
@@ -116,37 +117,36 @@ client must scrape `Set-Cookie` or use an `obk_` token.
 log in with a password no matter what it supplies — the failure is `invalid credentials`, which
 looks like a wrong password but means "wrong auth path".
 
-**SSO sessions are re-checkpointed** against the provider on a 5-minute TTL
-(`ssoCheckpointTTL`), by `go-forta/sso`'s `Checkpointer`. Three outcomes:
+### SSO sessions — lifetime is the identity provider's
 
-| Provider says | Result |
+SSO users are authenticated by `sso.Manager().Authenticate` on the `openbucket_session` cookie
+(`middleware/auth.go`). The cookie's SHA-256 keys an `oidc_sessions` row (migration 011) holding
+the provider's access/refresh/id tokens, encrypted with `tools.Encrypt`.
+
+| Event | Result |
 |---|---|
-| `active: false` | **Revoked** — session deleted AND `users.tokens_revoked_at` stamped. No grace. |
-| No answer, within 30 min of the last real answer | **Allowed** — a transient outage must not log everyone out |
-| No answer, past that window | **Denied** — unbounded fail-open makes revocation unenforceable |
+| provider access token within 1 min of expiry | refreshed server-side on the next request (single-flight per session) |
+| refresh succeeds | session continues — a successful refresh *is* the liveness check |
+| provider answers `invalid_grant` | session deleted → 401; the frontend re-authenticates silently |
+| provider unreachable | serve until access-token expiry + 10 min, then **503** (never 401) |
+| back-channel logout | matching sessions deleted at once |
 
-**Checkpoint correlation (go-forta v1.11.0).** `AuthMiddleware` builds a ctx with
-`correlatedContext(r)` — inbound `X-Request-ID`, and the trace id from a valid W3C `traceparent`
-else `X-Trace-ID`, each kept only if a UUID or 8–64 hex — and threads it through
-`validateToken(ctx, …)` → `checkpointSSOGrant(ctx, …)` → `Checkpointer.Check`. go-forta forwards
-those ids on the introspection call, so a checkpoint is findable in forta-api's logs by the same
-id. Checkpoint log lines go through `LogfCtx` (`log.Printf` + ` request_id=… trace_id=…`, never a
-token). There is **no request-id middleware** here, so the id is only whatever the client or
-proxy sent; with none, nothing is forwarded. ⚠️ Never pass `context.Background()` to `Check` —
-it carries no ids. The context handed to downstream handlers is unchanged. This service uses only
-the `sso` subpackage, so root `forta.Config` hooks (`OnAuthFailure`, `Correlation`) do not apply.
+There is no introspection checkpoint and no separate OpenBucket clock for SSO users. Their
+OpenBucket JWTs are refused by `validateToken` and their refresh cookies by `/auth/refresh`
+(`auth_type = "sso"`), so pre-migration sessions re-authenticate once and land on the new model.
 
-⚠️ **REVOCATION USED TO LAST EXACTLY ONE REQUEST.** The old checkpoint deleted the
-`sso_sessions` row and returned false, so the request in flight 401'd — and the *next* request
-found no row, took the `sess == nil` → allow branch, and let the user back in for the full life
-of their JWTs. Deleting the row cannot lock anyone out, because OpenBucket validates its own JWTs
-locally with no reference to it. `users.tokens_revoked_at` (migration 008) is what bites:
-`validateToken` rejects any token whose `iat` is not after the stamp, killing access and refresh
-tokens together.
+**Silent re-authentication:** `GET /auth/sso/login?prompt=none&return_to=<url>` (the frontend's
+`/login` does this automatically). A user still signed in at the provider comes straight back;
+otherwise the callback lands on `/login?error=login_required`. `return_to` is accepted only on the
+post-login URL's origin.
 
-⚠️ **`CheckpointUnavailable` should be HTTP 503, not 401.** The middleware hook returns a bool
-and cannot express it. Denying is right of the two options — allowing restores the unbounded
-fail-open — but a 401 sends clients to re-authenticate against the provider that is already down.
+**Logout** (`POST /auth/logout`) returns `data.redirect_url` — the provider's end-session URL
+(RP-initiated logout) when an SSO session was present, `""` otherwise. The frontend navigates to
+it. Register `<frontend>/login?signed_out=1` as a **logout redirect URI** with the provider.
+
+**Correlation.** `AuthMiddleware` builds a ctx with `correlatedContext(r)` (inbound `X-Request-ID`,
+trace id from `traceparent`/`X-Trace-ID`, each kept only if a UUID or 8–64 hex) and passes it to
+`Authenticate`, so a token refresh is findable in the provider's logs by the same id.
 
 **The SSO protocol lives in the shared module now.** This file previously said `ExchangeCode`
 tried three token-endpoint conventions (JSON body, HTTP Basic, form body) and instructed **"do
@@ -165,7 +165,7 @@ not remove them"**. That instruction was wrong, and following it kept a real def
   in the admin API for compatibility and **read by nothing**.
 - `ValidateState` read then unconditionally deleted, so two concurrent callbacks presenting the
   same state **both passed**. `query.DeleteSettingExisted` makes the DELETE decide the winner.
-- There was **no browser binding** on state. `sso.StateCookie` adds it.
+- There was **no browser binding** on state. The library's `openbucket_session_login` cookie adds it.
 - `crypto/rand` failure **panicked**, taking the process down. It now fails the login.
 
 The `{"success": true, "data": {…}}` envelope tolerance is the one fallback that survived, and it
@@ -192,12 +192,9 @@ subject-wide logout. Users must re-login once after the switch.
 
 ### Back-channel logout (`POST /auth/sso/backchannel-logout`)
 
-⚠️ **Deleting the `sso_sessions` row is NOT enough here, and this is where OpenBucket differs
-from a service that revalidates against its session table on every request.** OpenBucket issues
-its **own JWTs**, which outlive the row — so `DeleteSessionsBySID`/`BySubject` also stamp
-`tokens_revoked_at` via `RevokeLocalTokens`. go-forta's handler does not do this and has no way
-to know it is needed. Omitting it reintroduces the exact bug `RevokeLocalTokens` was written to
-fix, through a new path: revocation that is detected and not acted on.
+Handled by `sso.Manager().BackchannelHandler`: it verifies the logout token against the
+provider's JWKS and deletes the `oidc_sessions` rows by `sid` (else `sub`). Because SSO users
+hold no OpenBucket JWTs, deleting the row ends their access at the next request.
 
 ⚠️ **It is exempt from `CSRFMiddleware` and must stay exempt.** The notification is a
 server-to-server POST with no cookie and no auth header, so it otherwise hits the double-submit
@@ -207,17 +204,15 @@ delivery exhausted, and revocation silently stays at poll speed. monitor-core sh
 `middleware/csrf_test.go` covers this half; a routing test cannot.
 
 ⚠️ **It requires `sso.issuer_url`.** Verification needs the provider's JWKS, which only the OIDC
-adapter discovers; with an OAuth2 provider go-forta answers **501** rather than acting on a token
-it cannot verify.
-
-⚠️ **`introspect_url` is now settable** via `PUT /admin/sso-config`. It was read by `LoadConfig`
-but written by no handler, so it was env-only and unset — meaning the checkpoint had no endpoint
-to call and could not have worked regardless of the above.
+adapter discovers; with an OAuth2 provider the handler answers **501** rather than acting on a
+token it cannot verify.
 
 ### CSRF
 
-`CSRFMiddleware` implements double-submit cookie. It is **skipped entirely for
-`Authorization: Bearer` requests**, since those are stateless API clients not subject to CSRF.
+`CSRFMiddleware` implements double-submit cookie. It is **skipped for `Authorization: Bearer`
+requests that carry no session cookie** (`ob-access-token` or `openbucket_session`) — stateless
+API clients are not subject to CSRF, but a bearer header must not exempt a browser that also has a
+session, or a forged request could add a junk header and ride it.
 It is also skipped for safe methods and for `/auth/login`, `/auth/refresh`,
 `/auth/sso/callback`. Cookie-authenticated mutations need `X-CSRF-Token` matching the `ob-csrf`
 cookie.

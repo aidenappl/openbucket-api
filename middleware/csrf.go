@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"github.com/aidenappl/openbucket-api/sso"
 	"net/http"
 	"strings"
 
@@ -27,10 +28,16 @@ func CSRFMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Skip for Bearer token auth (stateless API clients)
+		// Skip for Bearer token auth (stateless API clients) — but only when
+		// the request carries no session cookie. Otherwise a forged cross-site
+		// request could add a junk Authorization header and ride the browser's
+		// session.
 		if strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
-			next.ServeHTTP(w, r)
-			return
+			_, jwtErr := r.Cookie(obAccessToken)
+			if jwtErr != nil && !sso.SessionRequest(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		// Skip exempt paths.
