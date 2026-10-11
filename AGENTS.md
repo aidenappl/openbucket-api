@@ -140,8 +140,9 @@ OpenBucket JWTs are refused by `validateToken` and their refresh cookies by `/au
 otherwise the callback lands on `/login?error=login_required`. `return_to` is accepted only on the
 post-login URL's origin.
 
-**Logout** (`POST /auth/logout`) returns `data.redirect_url` — the provider's end-session URL
-(RP-initiated logout) when an SSO session was present, `""` otherwise. The frontend navigates to
+**Logout** (`POST /auth/logout`) ends **only OpenBucket's** session (go-oidc-session ≥ v0.1.2 is
+local by default) and returns `data.redirect_url` — `/login?signed_out=1` when an SSO session was
+present, `""` otherwise. Forta and other apps stay signed in. The frontend navigates to
 it. Register `<frontend>/login?signed_out=1` as a **logout redirect URI** with the provider.
 
 **Correlation.** `AuthMiddleware` builds a ctx with `correlatedContext(r)` (inbound `X-Request-ID`,
