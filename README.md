@@ -39,17 +39,14 @@ environment variables.
 Leave unset to run with local accounts only. These are also editable at runtime through
 `GET|PUT /admin/sso-config`, which takes precedence over the environment.
 
-The flow itself is [`go-forta/sso`](https://github.com/aidenappl/go-forta/tree/main/sso) — the
-shared relying-party implementation, with PKCE S256, single-use server-side state, and a bounded
-revocation checkpoint.
+The flow is [`go-oidc-session`](https://github.com/aidenappl/go-oidc-session) — the shared,
+provider-agnostic OIDC client: PKCE S256, single-use server-side state, and a server-side SSO
+session whose lifetime is the identity provider's (tokens refreshed when due; the session ends
+when the provider refuses). The frontend re-authenticates silently with `prompt=none`.
 
-⚠️ **Set `OB_SSO_INTROSPECT_URL` (or `introspect_url` via the admin API) or the revocation
-checkpoint cannot run** — without it there is no endpoint to ask whether a grant is still live,
-and an upstream revocation stays invisible until the local session expires.
-
-The checkpoint's introspection call forwards the inbound `X-Request-ID` and trace id
-(`traceparent`, else `X-Trace-ID`) to the provider, and its log lines append
-`request_id=…`/`trace_id=…`, so a check can be matched to the provider's logs.
+Register with the provider: redirect URI `<api>/auth/sso/callback`, back-channel logout URI
+`<api>/auth/sso/backchannel-logout`, and logout redirect URI `<frontend>/login?signed_out=1`.
+Set `issuer_url` (OIDC) — without it there is no signed id_token and no back-channel logout.
 
 | Variable                 | Default                | Description                            |
 | ------------------------ | ---------------------- | -------------------------------------- |
@@ -58,7 +55,6 @@ The checkpoint's introspection call forwards the inbound `X-Request-ID` and trac
 | `OB_SSO_AUTHORIZE_URL`   | ``                     | Provider authorization endpoint        |
 | `OB_SSO_TOKEN_URL`       | ``                     | Provider token endpoint                |
 | `OB_SSO_USERINFO_URL`    | ``                     | Provider userinfo endpoint             |
-| `OB_SSO_INTROSPECT_URL`  | ``                     | Provider introspection endpoint        |
 | `OB_SSO_REDIRECT_URL`    | ``                     | This service's `/auth/sso/callback` URL |
 | `OB_SSO_LOGOUT_URL`      | ``                     | Provider logout endpoint               |
 | `OB_SSO_SCOPES`          | `openid email profile` | Requested scopes                       |

@@ -33,7 +33,6 @@ var (
 	SSOIssuerURL      string
 	SSOTokenURL       string
 	SSOUserInfoURL    string
-	SSOIntrospectURL  string
 	SSORedirectURL    string
 	SSOLogoutURL      string
 	SSOScopes         string
@@ -78,7 +77,6 @@ func Init() {
 	SSOIssuerURL = getOr(ctx, "OB_SSO_ISSUER_URL", "")
 	SSOTokenURL = getOr(ctx, "OB_SSO_TOKEN_URL", "")
 	SSOUserInfoURL = getOr(ctx, "OB_SSO_USERINFO_URL", "")
-	SSOIntrospectURL = getOr(ctx, "OB_SSO_INTROSPECT_URL", "")
 	SSORedirectURL = getOr(ctx, "OB_SSO_REDIRECT_URL", "")
 	SSOLogoutURL = getOr(ctx, "OB_SSO_LOGOUT_URL", "")
 	SSOScopes = getOr(ctx, "OB_SSO_SCOPES", "openid email profile")

@@ -3,7 +3,7 @@ package sso
 import (
 	"strings"
 
-	ssolib "github.com/aidenappl/go-forta/sso"
+	oidcsession "github.com/aidenappl/go-oidc-session"
 )
 
 // ProviderSlug is the single provider identifier this service uses.
@@ -31,8 +31,8 @@ const ProviderSlug = "sso"
 // NOT because the two are equivalent. Set sso.issuer_url and this becomes strictly
 // stronger; forta-api has published a conforming discovery document since Phase 1.
 // PKCE applies either way and is enforced by the library.
-func (c *SSOConfig) Provider() *ssolib.Provider {
-	return &ssolib.Provider{
+func (c *SSOConfig) Provider() *oidcsession.Provider {
+	return &oidcsession.Provider{
 		Slug:        ProviderSlug,
 		DisplayName: c.ButtonLabel,
 		Kind:        c.kind(),
@@ -60,10 +60,9 @@ func (c *SSOConfig) Provider() *ssolib.Provider {
 		// Ignored by the OIDC adapter, which discovers them. Kept populated so
 		// clearing the issuer falls back cleanly instead of to a half-configured
 		// provider that fails at the first redirect.
-		AuthorizeURL:  c.AuthorizeURL,
-		TokenURL:      c.TokenURL,
-		UserInfoURL:   c.UserInfoURL,
-		IntrospectURL: c.IntrospectURL,
+		AuthorizeURL: c.AuthorizeURL,
+		TokenURL:     c.TokenURL,
+		UserInfoURL:  c.UserInfoURL,
 
 		ClientID:     c.ClientID,
 		ClientSecret: c.ClientSecret,
@@ -102,9 +101,9 @@ func LooksLikeEmail(subject string) bool {
 }
 
 // kind reports which adapter this configuration should use. See Provider.
-func (c *SSOConfig) kind() ssolib.Kind {
+func (c *SSOConfig) kind() oidcsession.Kind {
 	if strings.TrimSpace(c.IssuerURL) != "" {
-		return ssolib.KindOIDC
+		return oidcsession.KindOIDC
 	}
-	return ssolib.KindOAuth2
+	return oidcsession.KindOAuth2
 }

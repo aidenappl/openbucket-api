@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/aidenappl/openbucket-api/env"
+	"github.com/aidenappl/openbucket-api/sso"
 )
 
 func init() {
@@ -45,6 +46,25 @@ func TestCSRF_BearerTokenSkipsValidation(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200 for Bearer auth, got %d", rr.Code)
+	}
+}
+
+// A bearer header must not exempt a request that also carries a session
+// cookie: a forged cross-site request could add a junk Authorization header
+// and still ride the browser's session.
+func TestCSRF_BearerWithSessionCookieIsChecked(t *testing.T) {
+	for _, cookie := range []string{obAccessToken, sso.SessionCookie} {
+		t.Run(cookie, func(t *testing.T) {
+			handler := CSRFMiddleware(http.HandlerFunc(okHandler))
+			req := httptest.NewRequest(http.MethodPost, "/buckets", nil)
+			req.Header.Set("Authorization", "Bearer junk")
+			req.AddCookie(&http.Cookie{Name: cookie, Value: "session"})
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != http.StatusForbidden {
+				t.Fatalf("bearer + %s cookie without a CSRF token got %d, want 403", cookie, rr.Code)
+			}
+		})
 	}
 }
 

@@ -46,6 +46,14 @@ func HandleRefresh(w http.ResponseWriter, r *http.Request) {
 	//
 	// Mirrors the comparison in middleware/auth.go; the two must not diverge.
 	// ─────────────────────────────────────────────────────────────────────────
+	// SSO users hold an openbucket_session instead (see sso.Manager). A refresh
+	// cookie from before that change must not mint a JWT the auth middleware
+	// would then refuse; 401 sends the browser through a silent SSO sign-in.
+	if user.AuthType == "sso" {
+		responder.SendError(w, http.StatusUnauthorized, "sign in with sso")
+		return
+	}
+
 	if user.TokensRevokedAt != nil && claims.IssuedAt != nil &&
 		!claims.IssuedAt.Time.After(*user.TokensRevokedAt) {
 		responder.SendError(w, http.StatusUnauthorized, "session revoked")

@@ -2,12 +2,11 @@ package middleware
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"strings"
-	"time"
 
-	ssolib "github.com/aidenappl/go-forta/sso"
+	oidcsession "github.com/aidenappl/go-oidc-session"
 	"github.com/aidenappl/openbucket-api/db"
 	"github.com/aidenappl/openbucket-api/jwt"
 	"github.com/aidenappl/openbucket-api/query"
@@ -21,7 +20,6 @@ import (
 // SSO user's grant against the IDP. Shorter = faster revocation propagation,
 // more network calls. 5 min is the practical floor for an admin-initiated
 // revoke since the IDP's access token TTL is 10 min.
-const ssoCheckpointTTL = 5 * time.Minute
 
 type contextKey string
 
@@ -66,6 +64,26 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Try JWT from cookie
+		// SSO session. Authenticate refreshes the provider tokens when due; a
+		// provider outage is 503, never 401 — a 401 would send the browser to
+		// re-authenticate against the provider that is down.
+		if sso.SessionRequest(r) {
+			sess, err := sso.Manager().Authenticate(w, r.WithContext(checkCtx))
+			if errors.Is(err, oidcsession.ErrProviderUnavailable) {
+				responder.SendError(w, http.StatusServiceUnavailable, "identity provider unavailable, retry shortly")
+				return
+			}
+			if err == nil {
+				if user := sessionUser(sess); user != nil {
+					ctx := context.WithValue(oidcsession.WithSession(r.Context(), sess), UserContextKey, user)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+			} else if !errors.Is(err, oidcsession.ErrNoSession) && !errors.Is(err, oidcsession.ErrSessionEnded) {
+				logfCtx(checkCtx, "auth: sso session lookup failed: %v", err)
+			}
+		}
+
 		if cookie, err := r.Cookie(obAccessToken); err == nil && cookie.Value != "" {
 			if user := validateToken(checkCtx, cookie.Value); user != nil {
 				ctx := context.WithValue(r.Context(), UserContextKey, user)
@@ -190,77 +208,24 @@ func validateToken(ctx context.Context, tokenStr string) *structs.User {
 		return nil
 	}
 
-	if user.AuthType == "sso" && !checkpointSSOGrant(ctx, int64(userID)) {
+	// SSO users authenticate with the openbucket_session cookie (sso.Manager),
+	// whose lifetime is the identity provider's. An OpenBucket JWT for one is
+	// from before that change; refusing it sends the browser through a silent
+	// re-authentication that replaces it with a real session.
+	if user.AuthType == "sso" {
 		return nil
 	}
 
 	return user
 }
 
-// ssoCheckpointer is the shared checkpoint implementation, built once.
-//
-// The policy — 5-minute interval, 30-minute bounded grace measured from the last
-// real answer, immediate action on a definitive active:false, and a hard
-// distinction between "the IdP said no" and "the IdP did not answer" — lives in
-// go-forta/sso so all three services share one copy of it.
-var ssoCheckpointer = newSSOCheckpointer(sso.NewSessionStore(), func(_ context.Context, slug string) (*ssolib.Provider, error) {
-	if slug != sso.ProviderSlug {
-		return nil, fmt.Errorf("auth: unknown sso provider %q", slug)
+// sessionUser loads the active user an SSO session belongs to.
+func sessionUser(s *oidcsession.Session) *structs.User {
+	user, err := query.GetUserByID(db.DB, int(s.UserID))
+	if err != nil || user == nil || !user.Active {
+		return nil
 	}
-	// Re-resolved every check, so a rotated secret or a newly-set introspect_url
-	// takes effect at the next checkpoint rather than the next restart.
-	return sso.LoadConfig().Provider(), nil
-})
-
-// newSSOCheckpointer builds the checkpointer with this service's policy and
-// logging. Split out so tests can supply a fake session store and provider.
-//
-// LogfCtx (go-forta v1.11.0) replaces the ctx-less Logf so checkpoint lines
-// carry the request's ids. Ids reach the IdP from the ctx passed to Check
-// (correlatedContext), so no Correlation hook is needed.
-func newSSOCheckpointer(sessions ssolib.SessionStore, providers func(context.Context, string) (*ssolib.Provider, error)) *ssolib.Checkpointer {
-	return &ssolib.Checkpointer{
-		Sessions:  sessions,
-		Providers: providers,
-		Interval:  ssoCheckpointTTL,
-		LogfCtx:   logfCtx,
-	}
-}
-
-// checkpointSSOGrant re-validates the user's grant against the IdP on a TTL.
-//
-// ⚠️ WHAT CHANGED, AND WHY IT MATTERS MORE THAN IT LOOKS.
-//
-// The previous version failed open on ANY error with no bound — a permanently
-// unreachable IdP meant permanently trusted sessions. It now fails open only inside
-// a 30-minute window measured from the last positive confirmation, then denies.
-//
-// And on a definitive active:false it now stamps users.tokens_revoked_at through
-// the library's LocalTokenRevoker, not just deletes the session row. Deleting the
-// row alone made revocation last exactly ONE request: the next request found no row
-// and took the "not an SSO session, allow" branch. See
-// sso.SessionStore.RevokeLocalTokens.
-//
-// ⚠️ CheckpointUnavailable should be HTTP 503, not 401, and this bool signature
-// cannot express it. A 401 sends clients to re-authenticate against the IdP that is
-// already unreachable. Denying is still correct of the two options available, since
-// allowing restores the unbounded fail-open. Widening the hook is the fix.
-//
-// ctx must be the request context (correlatedContext): go-forta forwards the ids it
-// carries as X-Request-ID / X-Trace-ID / traceparent on the introspection call, so
-// the check is joinable to the request in the IdP's logs. context.Background()
-// carries nothing.
-func checkpointSSOGrant(ctx context.Context, userID int64) bool {
-	switch ssoCheckpointer.Check(ctx, userID) {
-	case ssolib.CheckpointRevoked:
-		logfCtx(ctx, "checkpointSSOGrant: upstream grant revoked for user %d, session terminated", userID)
-		return false
-	case ssolib.CheckpointUnavailable:
-		logfCtx(ctx, "checkpointSSOGrant: unverifiable past grace window for user %d, denying (should be 503)", userID)
-		return false
-	default:
-		return true
-	}
+	return user
 }
 
 func extractBearerToken(r *http.Request) string {
