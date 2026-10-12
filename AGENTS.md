@@ -314,3 +314,5 @@ Update this AGENTS.md in the same change when you:
 - Also keep `README.md` and `docs/` in sync — `docs/authentication.md` is the detailed auth
   reference and `docs/frontend-integration.md` the client guide; both name concrete routes,
   cookies and env vars, so a route or config change invalidates them immediately.
+
+**`sso_sessions` is dropped** (migration 012): the pre-go-oidc-session table, unused since `oidc_sessions` replaced it.

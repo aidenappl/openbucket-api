@@ -190,7 +190,7 @@ func validateToken(ctx context.Context, tokenStr string) *structs.User {
 	// ── Revocation cut-off ───────────────────────────────────────────────────
 	//
 	// ⚠️ THIS IS WHAT MAKES SSO REVOCATION STICK, and without it the checkpoint
-	// below is nearly useless. Deleting the sso_sessions row 401s the request in
+	// below is nearly useless. Deleting the session row (oidc_sessions) 401s the request in
 	// flight and nothing more: the next request finds no row, takes the "not an
 	// SSO session, allow" branch, and the user is back in for the full life of
 	// their tokens. Revocation was effective for exactly one request.
