@@ -16,7 +16,7 @@ type User struct {
 	// TokensRevokedAt is the cut-off for this user's own OpenBucket JWTs: any token
 	// issued before it is rejected. NULL means nothing has been revoked.
 	//
-	// ⚠️ IT IS WHAT MAKES SSO REVOCATION STICK. Deleting the sso_sessions row does
+	// ⚠️ IT IS WHAT MAKES SSO REVOCATION STICK. Deleting the session row (oidc_sessions) does
 	// not lock anyone out — OpenBucket validates its own JWTs locally with no
 	// reference to that row, and the next request would find no row and take the
 	// "not an SSO session, allow" branch. See middleware.validateToken.

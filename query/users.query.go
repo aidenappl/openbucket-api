@@ -257,7 +257,7 @@ func DeleteUser(engine db.Queryable, id int) error {
 // ⚠️ THIS IS WHAT ACTUALLY LOCKS A REVOKED SSO USER OUT.
 //
 // Before this existed, the checkpoint responded to an inactive upstream grant by
-// deleting the sso_sessions row. That 401'd the request in flight and nothing
+// deleting the session row (oidc_sessions). That 401'd the request in flight and nothing
 // else: the NEXT request found no row, took the "not an SSO session, allow"
 // branch, and the user was back in for the full life of their existing tokens.
 // Revocation was effective for exactly one request.
