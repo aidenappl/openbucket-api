@@ -255,7 +255,8 @@ this service keeps its own users and no code or config names a specific provider
     (could not resolve host): the image built and pushed every time while nothing deployed.
     Root cause was a bad `LATTICE_DEPLOY_URL`, not this file. If a deploy seems not to land,
     check the deploy token's `last_used_at` in Lattice — a `null` there proves CI never
-    reached the API.
+    reached the API. A bad URL like that (curl exit 6) is now retried 5 times (~75s) before the job fails.
+  - **Network retries:** the appleby.cloud origin is on-prem behind Cloudflare on one WAN and ~5% of requests time out or 522, so the deploy workflow retries every call to it: registry login is a shell `docker login --password-stdin` loop (not `docker/login-action`, which cannot retry); the image is built with `load: true, provenance: false` and pushed by a separate `docker push` loop (`shell: bash`, so pipefail catches a failed push behind `tee`), so a blip retries the push (uploaded layers are skipped), not the build; and the Lattice deploy `curl` is retried. Each loop makes 5 attempts (5/10/20/40s), emits a `::warning::` per retry, retries curl failures and 408/429/502/503/504/520–524, and fails at once on auth errors / any other 4xx and on a Lattice 500 (the response body is now printed on failure). A 524 retry can redeploy the same commit twice — harmless. The pushed tag is a plain single-platform manifest (no provenance attestation).
 - **Common failure modes:**
   - *`invalid credentials` on a correct password* — the account is `auth_type = "sso"`.
   - *403 `admin access required`* — authenticated but wrong role (distinct from 401
