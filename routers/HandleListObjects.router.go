@@ -39,7 +39,7 @@ func HandleListObjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call the AWS function to list objects
-	objects, err := aws.ListObjects(r.Context(), req.Bucket, req.Prefix)
+	objects, truncated, err := aws.ListObjects(r.Context(), req.Bucket, req.Prefix)
 	if err != nil {
 		if aws.CheckError(err, w, r) {
 			return
@@ -49,5 +49,5 @@ func HandleListObjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with the list of objects
-	responder.New(w, objects, "Objects listed successfully")
+	responder.NewWithPagination(w, objects, responder.Truncation{Truncated: truncated, Limit: aws.MaxListEntries}, "Objects listed successfully")
 }

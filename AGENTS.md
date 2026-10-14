@@ -61,7 +61,7 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 | `structs/` | `structs` | `User`, `Session`, `Instance`, `ApiToken`. |
 | `tools/` | `tools` | `Password`, `Crypto`, `Validate`, `DecodeSession`, `ApiToken`. Several have tests. |
 | `sso/` | `sso` | SSO config (`sso.*` settings) and `session.go`: the `go-oidc-session` `Manager` (rebuilt by `Reload()` on config save), the user resolver, and the token `Sealer` over `tools.Encrypt`. No provider-specific code. |
-| `responder/` | `responder` | Envelopes. **Note: no `QueryError` helper** — use `SendError(w, http.StatusInternalServerError, msg, err)`. |
+| `responder/` | `responder` | Envelopes: `New`, `NewWithPagination` (adds `pagination`, e.g. `Truncation`). **Note: no `QueryError` helper** — use `SendError(w, http.StatusInternalServerError, msg, err)`. |
 | `aws/` | `aws` | S3 client wrappers and error mapping. |
 
 ## Running, building & testing
@@ -93,6 +93,12 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
   be silently ignored.
 - **Path traversal is checked explicitly** — `strings.Contains(req.Key, "..")` rejects. Keep
   that check on any new key-accepting handler.
+- **Listings are capped and say so.** `GET /objects` and `GET /folders` return at most
+  `aws.MaxListEntries` (10,000) entries and add `pagination: {truncated, limit}` to the envelope
+  (`responder.NewWithPagination` / `responder.Truncation`). Plain `responder.New` never emits a
+  `pagination` key. Every page loop relies on the storage server returning
+  `NextContinuationToken`: openbucket-go didn't until October 2026, so every listing — and
+  `DeleteFolder` / `RenameFolder`, which use the same loop — silently stopped at 1,000 keys.
 - **Query parameters are typed carefully.** `expiration` on presign is **integer seconds**
   (`presignExpiration`: default 3600; ≤ 0 or non-numeric → 400; values over 86400 are clamped to
   **86400**) — not a duration string. The response's `expiration` is what was actually granted;

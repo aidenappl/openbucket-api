@@ -196,3 +196,33 @@ func TestSendErrorWithParams(t *testing.T) {
 		t.Fatalf("expected 'account pending', got %q", resp.ErrorMessage)
 	}
 }
+
+// New must not grow a `pagination` key: every existing client parses the bare
+// envelope. Only NewWithPagination adds it.
+func TestNew_NoPaginationKey(t *testing.T) {
+	rr := httptest.NewRecorder()
+	New(rr, []string{"a"})
+	if strings.Contains(rr.Body.String(), "pagination") {
+		t.Fatalf("New should omit pagination, got %s", rr.Body.String())
+	}
+}
+
+func TestNewWithPagination_Truncation(t *testing.T) {
+	rr := httptest.NewRecorder()
+	NewWithPagination(rr, []string{"a"}, Truncation{Truncated: true, Limit: 10000}, "Objects listed successfully")
+
+	var resp struct {
+		Success    bool       `json:"success"`
+		Data       []string   `json:"data"`
+		Pagination Truncation `json:"pagination"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !resp.Success || len(resp.Data) != 1 {
+		t.Fatalf("envelope not preserved: %s", rr.Body.String())
+	}
+	if !resp.Pagination.Truncated || resp.Pagination.Limit != 10000 {
+		t.Fatalf("pagination = %+v", resp.Pagination)
+	}
+}

@@ -8,12 +8,30 @@ import (
 )
 
 type ResponseStructure struct {
-	Success bool        `json:"success"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data"`
+	Success    bool        `json:"success"`
+	Message    string      `json:"message"`
+	Data       interface{} `json:"data"`
+	Pagination interface{} `json:"pagination,omitempty"`
+}
+
+// Truncation is the pagination block for listings capped server-side: the
+// client gets the first Limit entries and must say so rather than present
+// them as complete.
+type Truncation struct {
+	Truncated bool `json:"truncated"`
+	Limit     int  `json:"limit"`
 }
 
 func New(w http.ResponseWriter, data interface{}, message ...string) {
+	write(w, data, nil, message...)
+}
+
+// NewWithPagination is New plus a `pagination` block in the envelope.
+func NewWithPagination(w http.ResponseWriter, data interface{}, pagination interface{}, message ...string) {
+	write(w, data, pagination, message...)
+}
+
+func write(w http.ResponseWriter, data interface{}, pagination interface{}, message ...string) {
 	// Ensure nil slices are serialized as [] instead of null
 	if data != nil {
 		v := reflect.ValueOf(data)
@@ -23,8 +41,9 @@ func New(w http.ResponseWriter, data interface{}, message ...string) {
 	}
 
 	response := ResponseStructure{
-		Success: true,
-		Data:    data,
+		Success:    true,
+		Data:       data,
+		Pagination: pagination,
 	}
 
 	if len(message) > 0 {

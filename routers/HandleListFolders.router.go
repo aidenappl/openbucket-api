@@ -26,7 +26,7 @@ func HandleListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call the AWS function to list folders
-	folders, err := aws.ListFolders(r.Context(), bucket, prefix)
+	folders, truncated, err := aws.ListFolders(r.Context(), bucket, prefix)
 	if err != nil {
 		if aws.CheckError(err, w, r) {
 			return
@@ -36,5 +36,5 @@ func HandleListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with the list of folders
-	responder.New(w, folders, "Folders listed successfully")
+	responder.NewWithPagination(w, folders, responder.Truncation{Truncated: truncated, Limit: aws.MaxListEntries}, "Folders listed successfully")
 }
