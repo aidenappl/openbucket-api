@@ -9,13 +9,13 @@ WORKDIR /app
 
 # Copy module files and download dependencies (better layer caching)
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy the rest of the source code
 COPY . .
 
 # Build the Go binary with size optimizations
-RUN go build -ldflags="-w -s" -o /bin/app
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build go build -ldflags="-w -s" -o /bin/app
 
 # Stage 2: Minimal runtime container
 FROM alpine:3.21
