@@ -99,26 +99,8 @@ func main() {
 	// ── Bucket Operations (protected + session-scoped) ───────────────────
 	bucket := core.PathPrefix("/{sessionId}").Subrouter()
 	bucket.Use(middleware.SessionMiddleware)
-
-	// Object Operations
-	bucket.HandleFunc("/object", routers.HandleUpload).Methods(http.MethodPut)
-	bucket.HandleFunc("/object", routers.HandleGetObject).Methods(http.MethodGet)
-	bucket.HandleFunc("/object/head", routers.HandleGetObjectHead).Methods(http.MethodGet)
-	bucket.HandleFunc("/object/head", routers.HandleGetObjectHead).Methods(http.MethodPost)
-	bucket.HandleFunc("/object/acl", routers.HandleGetObjectACL).Methods(http.MethodGet)
-	bucket.HandleFunc("/object/acl", routers.HandleModifyObjectACL).Methods(http.MethodPut)
-	bucket.HandleFunc("/object/acl", routers.HandleModifyObjectACL).Methods(http.MethodPost)
-	bucket.HandleFunc("/object", routers.HandleDeleteObject).Methods(http.MethodDelete)
-	bucket.HandleFunc("/objects", routers.HandleListObjects).Methods(http.MethodGet)
-	bucket.HandleFunc("/object/presign", routers.HandlePresign).Methods(http.MethodGet)
-	bucket.HandleFunc("/object/rename", routers.HandleRenameObject).Methods(http.MethodPut)
-
-	// Folder Operations
-	bucket.HandleFunc("/folder", routers.HandleGetFolder).Methods(http.MethodGet)
-	bucket.HandleFunc("/folders", routers.HandleListFolders).Methods(http.MethodGet)
-	bucket.HandleFunc("/folder", routers.HandleCreateFolder).Methods(http.MethodPost)
-	bucket.HandleFunc("/folder", routers.HandleUpdateFolder).Methods(http.MethodPut)
-	bucket.HandleFunc("/folder", routers.HandleDeleteFolder).Methods(http.MethodDelete)
+	// Object + folder routes; writes require the editor role (see the func).
+	routers.RegisterBucketRoutes(bucket)
 
 	// ── Admin Endpoints (admin role required) ────────────────────────────
 	admin := r.PathPrefix("/admin/").Subrouter()
