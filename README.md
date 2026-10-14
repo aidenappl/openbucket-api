@@ -5,7 +5,7 @@ OIDC SSO.
 
 ## Requirements
 
-- Go 1.25+
+- Go 1.26+
 - MariaDB / MySQL database
 - Keyring access for configuration (or the equivalent environment variables for local dev)
 
