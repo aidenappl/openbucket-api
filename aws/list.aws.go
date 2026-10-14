@@ -16,13 +16,21 @@ func stripQuotes(s string) string {
 	return s
 }
 
-func ListObjects(ctx context.Context, bucket, prefix string) ([]*s3.Object, error) {
+// MaxListEntries caps one listing call. A folder holding more is returned
+// truncated (the bool), and the API says so in `pagination.truncated`.
+const MaxListEntries = 10000
+
+// ListObjects returns the objects directly under prefix (not recursive), up
+// to MaxListEntries. truncated reports that more exist.
+//
+// ⚠️ It used to stop at the first page whenever the storage server returned no
+// continuation token — openbucket-go never did (fixed in openbucket-go), so
+// folders silently stopped at 1000 entries.
+func ListObjects(ctx context.Context, bucket, prefix string) (objects []*s3.Object, truncated bool, err error) {
 	s3Client, err := GetS3Client(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get S3 client: %w", err)
+		return nil, false, fmt.Errorf("failed to get S3 client: %w", err)
 	}
-
-	var objects []*s3.Object
 
 	// Normalize prefix: if it's not empty and doesn't end with '/', append '/'
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
@@ -47,12 +55,18 @@ func ListObjects(ctx context.Context, bucket, prefix string) ([]*s3.Object, erro
 				}
 			}
 		}
-		return !lastPage && len(objects) < 10000
+		if len(objects) >= MaxListEntries {
+			truncated = len(objects) > MaxListEntries || !lastPage
+			return false
+		}
+		return !lastPage
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-
-	return objects, nil
+	if len(objects) > MaxListEntries {
+		objects = objects[:MaxListEntries]
+	}
+	return objects, truncated, nil
 }

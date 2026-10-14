@@ -8,13 +8,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func ListFolders(ctx context.Context, bucket string, prefix string) ([]string, error) {
+// ListFolders returns the common prefixes directly under prefix, up to
+// MaxListEntries; truncated reports that more exist.
+func ListFolders(ctx context.Context, bucket string, prefix string) (folders []string, truncated bool, err error) {
 	s3Client, err := GetS3Client(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get S3 client: %w", err)
+		return nil, false, fmt.Errorf("failed to get S3 client: %w", err)
 	}
 
-	var folders []string
 	err = s3Client.ListObjectsV2Pages(&s3.ListObjectsV2Input{
 		Bucket:    aws.String(bucket),
 		Prefix:    aws.String(prefix),
@@ -25,15 +26,22 @@ func ListFolders(ctx context.Context, bucket string, prefix string) ([]string, e
 				folders = append(folders, *cp.Prefix)
 			}
 		}
-		return !lastPage && len(folders) < 10000
+		if len(folders) >= MaxListEntries {
+			truncated = len(folders) > MaxListEntries || !lastPage
+			return false
+		}
+		return !lastPage
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if len(folders) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
-	return folders, nil
+	if len(folders) > MaxListEntries {
+		folders = folders[:MaxListEntries]
+	}
+	return folders, truncated, nil
 
 }
