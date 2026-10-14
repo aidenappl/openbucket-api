@@ -57,7 +57,7 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 | `middleware/` | `middleware` | `AuthMiddleware`, `Protected`, `RequireAdmin`, `RequireEditor`, `RejectPending`, `SessionMiddleware`, `CSRFMiddleware`, logging. `correlation.go`: inbound request/trace ids, forwarded on SSO token refreshes. |
 | `jwt/` | `jwt` | Access (15m) and refresh (7d) token minting/validation. Has tests. |
 | `query/` | `query` | `users`, `sessions`, `settings`, `instances`, `api_tokens`. SSO sessions/states are `go-oidc-session/sqlstore`. |
-| `routers/` | `routers` | Handlers. Some have tests (`HandleLogin_test.go`). |
+| `routers/` | `routers` | Handlers. `RegisterBucketRoutes.router.go` mounts the session-scoped object/folder routes and applies the role check. Some have tests (`HandleLogin_test.go`, `RegisterBucketRoutes_test.go`). |
 | `structs/` | `structs` | `User`, `Session`, `Instance`, `ApiToken`. |
 | `tools/` | `tools` | `Password`, `Crypto`, `Validate`, `DecodeSession`, `ApiToken`. Several have tests. |
 | `sso/` | `sso` | SSO config (`sso.*` settings) and `session.go`: the `go-oidc-session` `Manager` (rebuilt by `Reload()` on config save), the user resolver, and the token `Sealer` over `tools.Encrypt`. No provider-specific code. |
@@ -230,6 +230,19 @@ address a bucket without one.
 except `/auth/self`, so a newly SSO-provisioned user can see their own status while awaiting
 approval.
 
+| Role | Bucket routes (`/core/v1/{sessionId}/…`) | `/admin/*` |
+|------|-------------------------------------------|-----------|
+| `viewer` | Reads only: list, GET/HEAD (incl. bulk `POST /object/head`), ACL read, presign | — |
+| `editor` | Reads + upload, delete, rename, ACL changes (incl. bulk `POST /object/acl`), folder create/rename/delete | — |
+| `admin` | Everything | All |
+
+Writes are enforced in `routers.RegisterBucketRoutes` by wrapping each mutating handler in
+`middleware.RequireEditor` (403 `editor access required`). Until October 2026 `RequireEditor` was
+defined but applied nowhere, so viewers could write. `TestBucketRoutesEnforceRoles` checks every
+route for every role **and fails if a route is registered without being classified** — add new
+routes to its table. Sessions themselves (`/core/v1/session[s]`) stay open to every non-pending
+role: they are personal and hold the user's own keys.
+
 ## Ecosystem & related repos
 
 | Repo | Relationship |
@@ -270,6 +283,8 @@ this service keeps its own users and no code or config names a specific provider
   - *`invalid credentials` on a correct password* — the account is `auth_type = "sso"`.
   - *403 `admin access required`* — authenticated but wrong role (distinct from 401
     `authentication required`).
+  - *403 `editor access required`* — a `viewer` attempted a bucket write. Expected; change the
+    user's role in Admin → Users if they should write.
   - *`Invalid expiration time` on presign* — a duration string was sent instead of seconds.
   - *Container healthy but routes 404* — an old image; the deploy step didn't run.
 
@@ -280,6 +295,8 @@ this service keeps its own users and no code or config names a specific provider
 - **Never add a caller-supplied `bucket` to a session-scoped endpoint** — the session is the
   authority and the handler overwrites it.
 - **Never bypass `RejectPending`** on a new protected route.
+- **Never register a mutating bucket route without `RequireEditor`** — add it in
+  `RegisterBucketRoutes` and classify it in `TestBucketRoutesEnforceRoles`.
 - **Do not change the CSRF exemptions** without understanding that Bearer clients depend on the
   bypass; adding a blanket requirement breaks every API-token consumer.
 - **Do not assume `/health` returns JSON.** It returns bare `OK`.
