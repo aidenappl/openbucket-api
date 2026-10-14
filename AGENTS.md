@@ -94,7 +94,10 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
 - **Path traversal is checked explicitly** — `strings.Contains(req.Key, "..")` rejects. Keep
   that check on any new key-accepting handler.
 - **Query parameters are typed carefully.** `expiration` on presign is **integer seconds**
-  (`strconv.Atoi`, default 3600, values over 86400 clamped to 3600) — not a duration string.
+  (`presignExpiration`: default 3600; ≤ 0 or non-numeric → 400; values over 86400 are clamped to
+  **86400**) — not a duration string. The response's `expiration` is what was actually granted;
+  clients must display that, not what they asked for. Until October 2026 over-max values were
+  silently reset to 3600, so a "7-day" link from openbucket-web lasted one hour.
 
 ## Domain & architecture
 
