@@ -245,6 +245,15 @@ this service keeps its own users and no code or config names a specific provider
 
 ## Operations
 
+- **CI runners:** every GitHub Actions job runs on `[self-hosted, lattice-worker]` — a
+  single-use runner started by `aidenappl/gh-runner-broker` on the CI host (`aplb-actions`,
+  10.15.10.78), with the toolchain and shared Go/npm caches provisioned by
+  `TeamTrailblaze/runner-setup`. Images build through the host's `lattice-builder` BuildKit
+  (`builder: lattice-builder`), never `docker/setup-buildx-action`, which races other runners
+  on the shared Docker daemon; its local layer cache replaces the gha cache. `setup-go` runs
+  with `cache: false`. Jobs stuck in "Queued" mean the broker or the host is down — check the
+  `gh-runner-broker` service in Monitor (zone `appleby`).
+
 - **Deployed** as `registry.appleby.cloud/openbucket-api:latest` on Lattice stack 20
   (container id 192, host 8003 → container 8004), alongside `openbucket-web`.
 - **CI:** `.github/workflows/push-to-registry.yml` builds, pushes, then triggers a Lattice
