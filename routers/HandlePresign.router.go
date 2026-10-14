@@ -1,6 +1,7 @@
 package routers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,23 +44,13 @@ func HandlePresign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Optional expiration time in seconds
-	expiration := r.URL.Query().Get("expiration")
-	if expiration != "" {
-		var err error
-		intExp, err := strconv.Atoi(expiration)
-		if err != nil || intExp <= 0 {
-			responder.SendError(w, http.StatusBadRequest, "Invalid expiration time", err)
-			return
-		}
-		req.Expiration = int64(intExp)
-	} else {
-		req.Expiration = 3600 // Default to 1 hour if not specified (seconds)
+	// Optional expiration time in seconds; see presignExpiration for the rules.
+	exp, err := presignExpiration(r.URL.Query().Get("expiration"))
+	if err != nil {
+		responder.SendError(w, http.StatusBadRequest, "Invalid expiration time", err)
+		return
 	}
-
-	if req.Expiration <= 0 || req.Expiration > 86400 {
-		req.Expiration = 3600 // default 1 hour, cap at 24 hours
-	}
+	req.Expiration = exp
 
 	// Handle the presigned URL generation logic here
 	url, err := aws.PresignObject(r.Context(), req.Bucket, req.Key, req.Expiration)
@@ -73,4 +64,32 @@ func HandlePresign(w http.ResponseWriter, r *http.Request) {
 
 	responder.New(w, map[string]string{"url": url, "expiration": strconv.FormatInt(req.Expiration, 10)}, "Presigned URL generated successfully")
 
+}
+
+// Presign lifetime limits, in seconds.
+const (
+	defaultPresignSeconds = 3600
+	maxPresignSeconds     = 86400
+)
+
+// presignExpiration parses the `expiration` query value (integer seconds).
+// Empty means the 1-hour default; non-numeric or <= 0 is an error; anything
+// above the 24-hour maximum is clamped to it.
+//
+// ⚠️ Over-max values used to be reset to the 1-hour DEFAULT rather than
+// clamped, so a client asking for 7 days silently got a 1-hour link (and
+// openbucket-web labelled it as 7 days). The response's `expiration` field
+// reports what was actually granted — clients should display that.
+func presignExpiration(raw string) (int64, error) {
+	if raw == "" {
+		return defaultPresignSeconds, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("expiration must be a positive number of seconds, got %q", raw)
+	}
+	if n > maxPresignSeconds {
+		return maxPresignSeconds, nil
+	}
+	return n, nil
 }
