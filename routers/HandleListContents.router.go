@@ -1,6 +1,7 @@
 package routers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/aidenappl/openbucket-api/aws"
@@ -8,8 +9,9 @@ import (
 	"github.com/aidenappl/openbucket-api/responder"
 )
 
-// HandleListContents serves GET /contents?prefix= — one folder level, its
-// sub-folders and objects, from a single listing (see aws.ListContents).
+// HandleListContents serves GET /contents?prefix=&cursor= — one folder
+// level, its sub-folders and objects, from a single listing (see
+// aws.ListContents). A truncated response carries pagination.next_cursor.
 func HandleListContents(w http.ResponseWriter, r *http.Request) {
 	session := middleware.GetSession(r.Context())
 	if session == nil {
@@ -21,7 +23,12 @@ func HandleListContents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contents, truncated, err := aws.ListContents(r.Context(), session.BucketName, r.URL.Query().Get("prefix"))
+	q := r.URL.Query()
+	contents, next, err := aws.ListContents(r.Context(), session.BucketName, q.Get("prefix"), q.Get("cursor"))
+	if errors.Is(err, aws.ErrInvalidCursor) {
+		responder.SendError(w, http.StatusBadRequest, "invalid cursor", err)
+		return
+	}
 	if err != nil {
 		if aws.CheckError(err, w, r) {
 			return
@@ -30,5 +37,9 @@ func HandleListContents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	responder.NewWithPagination(w, contents, responder.Truncation{Truncated: truncated, Limit: aws.MaxListEntries}, "Folder contents listed successfully")
+	responder.NewWithPagination(w, contents, responder.Truncation{
+		Truncated:  next != "",
+		Limit:      aws.MaxListEntries,
+		NextCursor: next,
+	}, "Folder contents listed successfully")
 }

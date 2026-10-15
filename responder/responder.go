@@ -20,6 +20,8 @@ type ResponseStructure struct {
 type Truncation struct {
 	Truncated bool `json:"truncated"`
 	Limit     int  `json:"limit"`
+	// NextCursor continues a truncated listing (GET /contents?cursor=).
+	NextCursor string `json:"next_cursor,omitempty"`
 }
 
 func New(w http.ResponseWriter, data interface{}, message ...string) {

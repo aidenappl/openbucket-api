@@ -94,8 +94,10 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
   be silently ignored.
 - **Path traversal is checked explicitly** — `strings.Contains(req.Key, "..")` rejects. Keep
   that check on any new key-accepting handler.
-- **One listing per folder view: `GET /contents?prefix=`** returns `{folders, objects}` from a
-  single delimited listing (`aws.ListContents`; prefix normalised with a trailing `/`, the folder's
+- **One listing per folder view: `GET /contents?prefix=&cursor=`** returns `{folders, objects}` from a
+  single delimited listing, 10,000 entries per call cut in key order across folders and objects;
+  a truncated response has `pagination.next_cursor` (opaque; a bad one is 400) to fetch the next
+  10,000. The console's "Load more" uses it (`aws.ListContents`; prefix normalised with a trailing `/`, the folder's
   own marker left out). openbucket-web uses it; `GET /folders` and `GET /objects` stay for other
   clients (MCP, CLI) — the console calling both meant two full listings of the same prefix.
 - **Listings are capped and say so.** `GET /contents`, `GET /objects` and `GET /folders` return at most
@@ -107,6 +109,12 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
 - **Storage calls are timed.** Wrap new storage work in `defer timing.Track(ctx, "storage")()`
   (one span around a fan-out, not one per goroutine — spans with one name are summed). The
   browser's network panel then shows where a slow request spent its time.
+- **API → storage goes over the LAN where configured.** `OB_STORAGE_INTERNAL_ENDPOINTS`
+  (`public=internal,…`, e.g. `https://cdn.appleby.cloud=http://10.15.10.222:8080`) maps a
+  session's public endpoint to the storage server's LAN address; entries are probed at startup and
+  an unreachable one stays public (logged `storage: … unreachable`). The public endpoints go
+  through Cloudflare, ~550 ms of a 1 s `hotels/` listing. **Anything whose URL reaches a client
+  (presign) must use `GetPublicS3Client`**, never `GetS3Client`.
 - **The storage client is shared and pooled** (`aws.storageHTTPClient`). Never build sessions on
   the SDK default (`http.DefaultClient`, 2 idle connections per host): the storage servers are
   reached through Cloudflare, and a 100-key bulk HEAD then opened ~98 new TLS connections.
@@ -287,6 +295,10 @@ this service keeps its own users and no code or config names a specific provider
   with `cache: false`. Jobs stuck in "Queued" mean the broker or the host is down — check the
   `gh-runner-broker` service in Monitor (zone `appleby`).
 
+- **Storage over the LAN:** `OB_STORAGE_INTERNAL_ENDPOINTS` lives in **Keyring**, granted to the
+  `openbucket-api` token (id 1). Not in the Lattice env: the container/compose env returns the
+  Keyring credentials masked, so rewriting it would clobber them. A plain env var would override
+  Keyring (local dev). Startup logs `storage: <public> -> <internal> (LAN)` per entry.
 - **Deployed** as `registry.appleby.cloud/openbucket-api:latest` on Lattice stack 20
   (container id 192, host 8003 → container 8004), alongside `openbucket-web`.
 - **CI:** `.github/workflows/push-to-registry.yml` builds, pushes, then triggers a Lattice

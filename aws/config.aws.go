@@ -49,10 +49,22 @@ var storageHTTPClient = &http.Client{
 	},
 }
 
-// CreateAWSSession creates an AWS session from context session claims.
-// It verifies that the session belongs to the authenticated user.
-// Sessions are cached by session ID for 5 minutes.
+// CreateAWSSession creates an AWS session from context session claims, for
+// the API's own calls to storage: on the session's LAN endpoint when one is
+// mapped (see internalEndpoint). It verifies that the session belongs to the
+// authenticated user. Sessions are cached by session ID for 5 minutes.
 func CreateAWSSession(ctx context.Context) (*session.Session, error) {
+	return createSession(ctx, false)
+}
+
+// createPublicSession is CreateAWSSession on the session's public endpoint,
+// for URLs handed to clients (presigned links). Cached under the negated
+// session id.
+func createPublicSession(ctx context.Context) (*session.Session, error) {
+	return createSession(ctx, true)
+}
+
+func createSession(ctx context.Context, public bool) (*session.Session, error) {
 	sessionClaims, err := GetSessionFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -67,13 +79,21 @@ func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 		return nil, fmt.Errorf("session does not belong to authenticated user")
 	}
 
+	cacheKey := sessionClaims.SessionID
+	endpoint := sessionClaims.Endpoint
+	if public {
+		cacheKey = -cacheKey
+	} else {
+		endpoint = internalEndpoint(endpoint)
+	}
+
 	// Check AWS session cache
-	if cached, ok := cache.GetAWSSession(sessionClaims.SessionID); ok {
+	if cached, ok := cache.GetAWSSession(cacheKey); ok {
 		return cached, nil
 	}
 
 	config := &aws.Config{
-		Endpoint:         aws.String(sessionClaims.Endpoint),
+		Endpoint:         aws.String(endpoint),
 		Region:           aws.String(sessionClaims.Region),
 		S3ForcePathStyle: aws.Bool(true),
 		HTTPClient:       storageHTTPClient,
@@ -92,13 +112,24 @@ func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 		return nil, err
 	}
 
-	cache.SetAWSSession(sessionClaims.SessionID, sess)
+	cache.SetAWSSession(cacheKey, sess)
 	return sess, nil
 }
 
 // GetS3Client creates an S3 client from context.
 func GetS3Client(ctx context.Context) (*s3.S3, error) {
 	sess, err := CreateAWSSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s3.New(sess), nil
+}
+
+// GetPublicS3Client is GetS3Client on the session's public endpoint. Use it
+// for anything whose URL leaves the API (presigning) — an internal address
+// would be unreachable for the client.
+func GetPublicS3Client(ctx context.Context) (*s3.S3, error) {
+	sess, err := createPublicSession(ctx)
 	if err != nil {
 		return nil, err
 	}

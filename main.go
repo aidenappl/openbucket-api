@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/bootstrap"
 	"github.com/aidenappl/openbucket-api/db"
 	"github.com/aidenappl/openbucket-api/env"
@@ -25,6 +26,9 @@ func maxBodyMiddleware(next http.Handler) http.Handler {
 func main() {
 	// Load secrets from Keyring
 	env.Init()
+
+	// Reach storage servers on the LAN where configured (and reachable).
+	aws.InitInternalEndpoints(env.StorageInternalEndpoints)
 
 	// Initialize the database connection
 	db.Init()

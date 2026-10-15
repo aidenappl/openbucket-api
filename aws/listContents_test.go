@@ -28,7 +28,7 @@ func fakeStorage(t *testing.T, keys []string, pageSize int) (*httptest.Server, *
 		calls.Add(1)
 		q := r.URL.Query()
 		prefix, delim := q.Get("prefix"), q.Get("delimiter")
-		after := ""
+		after := q.Get("start-after")
 		if tok := q.Get("continuation-token"); tok != "" {
 			b, _ := base64.RawURLEncoding.DecodeString(tok)
 			after = string(b)
@@ -103,7 +103,8 @@ func TestListContents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			srv, _ := fakeStorage(t, append([]string(nil), keys...), tt.pageSize)
-			got, truncated, err := ListContents(sessionContext(srv.URL), "b", tt.prefix)
+			got, next, err := ListContents(sessionContext(srv.URL), "b", tt.prefix, "")
+			truncated := next != ""
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,7 +130,8 @@ func TestListContentsCapsAtMaxListEntries(t *testing.T) {
 		keys = append(keys, fmt.Sprintf("big/%05d.txt", n))
 	}
 	srv, calls := fakeStorage(t, keys, 1000)
-	got, truncated, err := ListContents(sessionContext(srv.URL), "b", "big/")
+	got, next, err := ListContents(sessionContext(srv.URL), "b", "big/", "")
+	truncated := next != ""
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,5 +140,66 @@ func TestListContentsCapsAtMaxListEntries(t *testing.T) {
 	}
 	if c := calls.Load(); c != int32(MaxListEntries/1000) {
 		t.Fatalf("made %d listing calls, want %d (stop at the cap)", c, MaxListEntries/1000)
+	}
+}
+
+// Following next_cursor returns every entry of a level exactly once, folders
+// and objects interleaved, and the last page has no cursor.
+func TestListContentsCursorCoversEverything(t *testing.T) {
+	var keys []string
+	want := map[string]bool{}
+	for n := 0; n < MaxListEntries+50; n++ {
+		if n%3 == 0 {
+			f := fmt.Sprintf("lvl/%05d/", n)
+			keys = append(keys, f+"a.jpg", f+"b.jpg") // one folder entry
+			want[f] = true
+		} else {
+			k := fmt.Sprintf("lvl/%05d.txt", n)
+			keys = append(keys, k)
+			want[k] = true
+		}
+	}
+	srv, _ := fakeStorage(t, keys, 1000)
+	ctx := sessionContext(srv.URL)
+
+	seen := map[string]bool{}
+	cursor := ""
+	for pages := 1; ; pages++ {
+		got, next, err := ListContents(ctx, "b", "lvl/", cursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := len(got.Folders) + len(got.Objects); n > MaxListEntries {
+			t.Fatalf("page %d has %d entries", pages, n)
+		}
+		for _, f := range got.Folders {
+			if seen[f] {
+				t.Fatalf("%q listed twice", f)
+			}
+			seen[f] = true
+		}
+		for _, o := range got.Objects {
+			if seen[*o.Key] {
+				t.Fatalf("%q listed twice", *o.Key)
+			}
+			seen[*o.Key] = true
+		}
+		if next == "" {
+			if pages != 2 {
+				t.Fatalf("took %d pages, want 2", pages)
+			}
+			break
+		}
+		cursor = next
+	}
+	if len(seen) != len(want) {
+		t.Fatalf("saw %d entries, want %d", len(seen), len(want))
+	}
+}
+
+func TestListContentsRejectsBadCursor(t *testing.T) {
+	srv, _ := fakeStorage(t, []string{"a"}, 10)
+	if _, _, err := ListContents(sessionContext(srv.URL), "b", "", "not base64!"); err != ErrInvalidCursor {
+		t.Fatalf("err = %v, want ErrInvalidCursor", err)
 	}
 }

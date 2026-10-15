@@ -40,6 +40,10 @@ var (
 	SSOButtonLabel    string
 	SSOAutoProvision  bool
 	SSOPostLoginURL   string
+
+	// StorageInternalEndpoints maps public storage endpoints to LAN ones,
+	// "public=internal,…" — see aws.InitInternalEndpoints.
+	StorageInternalEndpoints string
 )
 
 // Init loads all configuration from Keyring. The three KEYRING_* env vars
@@ -84,6 +88,8 @@ func Init() {
 	SSOButtonLabel = getOr(ctx, "OB_SSO_BUTTON_LABEL", "Sign in with SSO")
 	SSOAutoProvision = getOr(ctx, "OB_SSO_AUTO_PROVISION", "true") == "true"
 	SSOPostLoginURL = getOr(ctx, "OB_SSO_POST_LOGIN_URL", "")
+
+	StorageInternalEndpoints = getOr(ctx, "OB_STORAGE_INTERNAL_ENDPOINTS", "")
 
 	fmt.Println("Connecting to Keyring... ✅ Done")
 }
