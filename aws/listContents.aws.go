@@ -2,7 +2,10 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/aidenappl/openbucket-api/timing"
@@ -18,65 +21,114 @@ type Contents struct {
 }
 
 // ListContents lists one level under prefix — folders and objects — in a
-// single delimited listing, up to MaxListEntries entries in total; truncated
-// reports that more exist.
+// single delimited listing, MaxListEntries entries (folders + objects) per
+// call. next is empty when the level is complete; otherwise pass it back as
+// cursor for the following entries.
 //
 // The explorer used to call ListFolders and ListObjects for every folder it
 // opened: two full listings of the same prefix, each a round trip per page to
-// the storage server through Cloudflare. This is one.
+// the storage server. This is one.
+//
+// Entries are cut in key order across folders and objects (byte order, as
+// S3 lists them), so a page ends at one exact entry and the cursor (that
+// entry, opaque) resumes right after it via StartAfter — openbucket-go skips a
+// common prefix the cursor ends on, and everything inside it.
 //
 // prefix is normalised like ListObjects (a trailing "/" is added), and the
 // folder's own marker key is left out.
-func ListContents(ctx context.Context, bucket, prefix string) (contents Contents, truncated bool, err error) {
+func ListContents(ctx context.Context, bucket, prefix, cursor string) (contents Contents, next string, err error) {
 	defer timing.Track(ctx, "storage")()
 
+	after, err := decodeCursor(cursor)
+	if err != nil {
+		return Contents{}, "", err
+	}
 	s3Client, err := GetS3Client(ctx)
 	if err != nil {
-		return Contents{}, false, fmt.Errorf("failed to get S3 client: %w", err)
+		return Contents{}, "", fmt.Errorf("failed to get S3 client: %w", err)
 	}
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
 
 	contents = Contents{Folders: []string{}, Objects: []*s3.Object{}}
-	count := func() int { return len(contents.Folders) + len(contents.Objects) }
-
-	err = s3Client.ListObjectsV2PagesWithContext(ctx, &s3.ListObjectsV2Input{
+	count, last := 0, ""
+	input := &s3.ListObjectsV2Input{
 		Bucket:    aws.String(bucket),
 		Prefix:    aws.String(prefix),
 		Delimiter: aws.String("/"),
-	}, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
-		for _, cp := range page.CommonPrefixes {
-			if cp != nil && cp.Prefix != nil {
-				contents.Folders = append(contents.Folders, *cp.Prefix)
+	}
+	if after != "" {
+		input.StartAfter = aws.String(after)
+	}
+
+	err = s3Client.ListObjectsV2PagesWithContext(ctx, input, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
+		for _, e := range mergeEntries(page, prefix) {
+			if count == MaxListEntries {
+				next = encodeCursor(last)
+				return false
 			}
+			if e.object != nil {
+				if e.object.ETag != nil {
+					*e.object.ETag = stripQuotes(*e.object.ETag)
+				}
+				contents.Objects = append(contents.Objects, e.object)
+			} else {
+				contents.Folders = append(contents.Folders, e.key)
+			}
+			last = e.key
+			count++
 		}
-		for _, item := range page.Contents {
-			if item == nil || item.Key == nil || *item.Key == prefix {
-				continue
-			}
-			if item.ETag != nil {
-				*item.ETag = stripQuotes(*item.ETag)
-			}
-			contents.Objects = append(contents.Objects, item)
-		}
-		if count() >= MaxListEntries {
-			truncated = count() > MaxListEntries || !lastPage
+		// Exactly full: whether more exist is only known from the page.
+		if count == MaxListEntries && !lastPage {
+			next = encodeCursor(last)
 			return false
 		}
 		return !lastPage
 	})
 	if err != nil {
-		return Contents{}, false, err
+		return Contents{}, "", err
 	}
+	return contents, next, nil
+}
 
-	// Trim overshoot from the last page: folders keep priority (they are
-	// what you navigate by), then objects fill the remainder.
-	if count() > MaxListEntries {
-		if len(contents.Folders) > MaxListEntries {
-			contents.Folders = contents.Folders[:MaxListEntries]
+type entry struct {
+	key    string
+	object *s3.Object // nil for a common prefix
+}
+
+// mergeEntries returns a page's common prefixes and objects as one stream in
+// key order, without the folder's own marker.
+func mergeEntries(page *s3.ListObjectsV2Output, prefix string) []entry {
+	out := make([]entry, 0, len(page.CommonPrefixes)+len(page.Contents))
+	for _, cp := range page.CommonPrefixes {
+		if cp != nil && cp.Prefix != nil {
+			out = append(out, entry{key: *cp.Prefix})
 		}
-		contents.Objects = contents.Objects[:MaxListEntries-len(contents.Folders)]
 	}
-	return contents, truncated, nil
+	for _, o := range page.Contents {
+		if o != nil && o.Key != nil && *o.Key != prefix {
+			out = append(out, entry{key: *o.Key, object: o})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].key < out[j].key })
+	return out
+}
+
+// ErrInvalidCursor is returned for a cursor this API didn't issue.
+var ErrInvalidCursor = errors.New("invalid cursor")
+
+func encodeCursor(key string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(key))
+}
+
+func decodeCursor(c string) (string, error) {
+	if c == "" {
+		return "", nil
+	}
+	b, err := base64.RawURLEncoding.DecodeString(c)
+	if err != nil || len(b) == 0 {
+		return "", ErrInvalidCursor
+	}
+	return string(b), nil
 }
