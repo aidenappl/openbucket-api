@@ -115,6 +115,12 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
   an unreachable one stays public (logged `storage: … unreachable`). The public endpoints go
   through Cloudflare, ~550 ms of a 1 s `hotels/` listing. **Anything whose URL reaches a client
   (presign) must use `GetPublicS3Client`**, never `GetS3Client`.
+- **Storage load is capped.** Bulk HEAD/ACL run through `routers.forEachLimited` (16 at a
+  time per request) and the storage transport allows 48 connections per storage server. Both
+  used to be unbounded: the console's 4 parallel bulk-HEAD batches for a 10,000-file folder put
+  ~400 calls on openbucket-go at once, which deadlocked its DB pool and took cdn.trailblaze.to
+  down for ~15 hours (2026-10-15; storage-side fix openbucket-go#32). Don't add an unbounded
+  fan-out to storage.
 - **The storage client is shared and pooled** (`aws.storageHTTPClient`). Never build sessions on
   the SDK default (`http.DefaultClient`, 2 idle connections per host): the storage servers are
   reached through Cloudflare, and a 100-key bulk HEAD then opened ~98 new TLS connections.

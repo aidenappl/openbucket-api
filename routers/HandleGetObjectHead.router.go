@@ -1,12 +1,10 @@
 package routers
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -86,7 +84,6 @@ func handleBulkObjectHead(bucket string, w http.ResponseWriter, r *http.Request)
 
 	// Pre-allocate results slice to preserve order
 	results := make([]*s3.HeadObjectOutput, len(req.Keys))
-	var wg sync.WaitGroup
 
 	// Use the request context for all goroutines
 	ctx := r.Context()
@@ -94,20 +91,14 @@ func handleBulkObjectHead(bucket string, w http.ResponseWriter, r *http.Request)
 	// One span for the whole fan-out: per-call spans would sum to far more
 	// than the wall time.
 	endStorage := timing.Track(ctx, "storage")
-	for i, key := range req.Keys {
-		wg.Add(1)
-		go func(idx int, k string, ctx context.Context) {
-			defer wg.Done()
-			head, err := aws.GetObjectHead(ctx, bucket, k)
-			if err != nil {
-				// Skip keys that are inaccessible or missing — leave as nil
-				return
-			}
-			results[idx] = head
-		}(i, key, ctx)
-	}
-
-	wg.Wait()
+	forEachLimited(len(req.Keys), func(idx int) {
+		head, err := aws.GetObjectHead(ctx, bucket, req.Keys[idx])
+		if err != nil {
+			// Skip keys that are inaccessible or missing — leave as nil
+			return
+		}
+		results[idx] = head
+	})
 	endStorage()
 
 	responder.New(w, results, "Bulk object heads retrieved successfully")

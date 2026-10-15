@@ -38,11 +38,15 @@ func GetSessionFromContext(ctx context.Context) (*tools.SessionClaims, error) {
 // No overall Timeout: downloads stream objects of any size.
 var storageHTTPClient = &http.Client{
 	Transport: &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          256,
-		MaxIdleConnsPerHost:   128,
+		Proxy:               http.ProxyFromEnvironment,
+		DialContext:         (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:   true,
+		MaxIdleConns:        256,
+		MaxIdleConnsPerHost: 128,
+		// At most this many connections to one storage server. ~400 at once
+		// deadlocked openbucket-go's 100-connection DB pool (2026-10-15);
+		// extra requests queue here instead of piling onto storage.
+		MaxConnsPerHost:       48,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
