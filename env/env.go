@@ -44,6 +44,10 @@ var (
 	// StorageInternalEndpoints maps public storage endpoints to LAN ones,
 	// "public=internal,…" — see aws.InitInternalEndpoints.
 	StorageInternalEndpoints string
+
+	// Monitor (zone appleby). Empty key: events go nowhere (stdout off).
+	MonitorIngestURL string
+	MonitorIngestKey string
 )
 
 // Init loads all configuration from Keyring. The three KEYRING_* env vars
@@ -90,6 +94,10 @@ func Init() {
 	SSOPostLoginURL = getOr(ctx, "OB_SSO_POST_LOGIN_URL", "")
 
 	StorageInternalEndpoints = getOr(ctx, "OB_STORAGE_INTERNAL_ENDPOINTS", "")
+
+	// The shared appleby-zone ingest credentials (Keyring), as other services use.
+	MonitorIngestURL = getOr(ctx, "MONITOR_APPLEBY_INGEST_URL", "")
+	MonitorIngestKey = getOr(ctx, "MONITOR_APPLEBY_INGEST_KEY", "")
 
 	fmt.Println("Connecting to Keyring... ✅ Done")
 }

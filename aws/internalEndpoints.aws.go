@@ -67,6 +67,9 @@ func InitInternalEndpoints(spec string) {
 	internalMu.Unlock()
 }
 
+// InternalEndpoint is internalEndpoint, for the storage prober.
+func InternalEndpoint(endpoint string) string { return internalEndpoint(endpoint) }
+
 // internalEndpoint returns the LAN address for endpoint, or endpoint itself.
 func internalEndpoint(endpoint string) string {
 	internalMu.RLock()
