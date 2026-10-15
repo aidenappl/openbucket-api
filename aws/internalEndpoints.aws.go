@@ -38,7 +38,7 @@ func normalizeEndpoint(e string) string {
 	return strings.ToLower(strings.TrimRight(strings.TrimSpace(e), "/"))
 }
 
-// InitInternalEndpoints parses STORAGE_INTERNAL_ENDPOINTS
+// InitInternalEndpoints parses OB_STORAGE_INTERNAL_ENDPOINTS
 // ("public=internal,public=internal") and keeps the entries whose internal
 // address answers now. An unreachable or malformed entry is logged and
 // skipped, so a bad setting falls back to the public endpoint instead of
@@ -52,7 +52,7 @@ func InitInternalEndpoints(spec string) {
 		pub, internal, ok := strings.Cut(pair, "=")
 		pub, internal = normalizeEndpoint(pub), normalizeEndpoint(internal)
 		if !ok || pub == "" || internal == "" {
-			log.Printf("storage: ignoring malformed STORAGE_INTERNAL_ENDPOINTS entry %q", pair)
+			log.Printf("storage: ignoring malformed OB_STORAGE_INTERNAL_ENDPOINTS entry %q", pair)
 			continue
 		}
 		if !probe(internal) {

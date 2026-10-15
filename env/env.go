@@ -89,7 +89,7 @@ func Init() {
 	SSOAutoProvision = getOr(ctx, "OB_SSO_AUTO_PROVISION", "true") == "true"
 	SSOPostLoginURL = getOr(ctx, "OB_SSO_POST_LOGIN_URL", "")
 
-	StorageInternalEndpoints = getOr(ctx, "STORAGE_INTERNAL_ENDPOINTS", "")
+	StorageInternalEndpoints = getOr(ctx, "OB_STORAGE_INTERNAL_ENDPOINTS", "")
 
 	fmt.Println("Connecting to Keyring... ✅ Done")
 }

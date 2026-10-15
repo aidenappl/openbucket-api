@@ -109,7 +109,7 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
 - **Storage calls are timed.** Wrap new storage work in `defer timing.Track(ctx, "storage")()`
   (one span around a fan-out, not one per goroutine — spans with one name are summed). The
   browser's network panel then shows where a slow request spent its time.
-- **API → storage goes over the LAN where configured.** `STORAGE_INTERNAL_ENDPOINTS`
+- **API → storage goes over the LAN where configured.** `OB_STORAGE_INTERNAL_ENDPOINTS`
   (`public=internal,…`, e.g. `https://cdn.appleby.cloud=http://10.15.10.222:8080`) maps a
   session's public endpoint to the storage server's LAN address; entries are probed at startup and
   an unreachable one stays public (logged `storage: … unreachable`). The public endpoints go
@@ -295,8 +295,10 @@ this service keeps its own users and no code or config names a specific provider
   with `cache: false`. Jobs stuck in "Queued" mean the broker or the host is down — check the
   `gh-runner-broker` service in Monitor (zone `appleby`).
 
-- **Storage over the LAN:** stack 20 sets `STORAGE_INTERNAL_ENDPOINTS` (not secret, so a plain
-  env var — it overrides Keyring). Startup logs `storage: <public> -> <internal> (LAN)` per entry.
+- **Storage over the LAN:** `OB_STORAGE_INTERNAL_ENDPOINTS` lives in **Keyring**, granted to the
+  `openbucket-api` token (id 1). Not in the Lattice env: the container/compose env returns the
+  Keyring credentials masked, so rewriting it would clobber them. A plain env var would override
+  Keyring (local dev). Startup logs `storage: <public> -> <internal> (LAN)` per entry.
 - **Deployed** as `registry.appleby.cloud/openbucket-api:latest` on Lattice stack 20
   (container id 192, host 8003 → container 8004), alongside `openbucket-web`.
 - **CI:** `.github/workflows/push-to-registry.yml` builds, pushes, then triggers a Lattice
