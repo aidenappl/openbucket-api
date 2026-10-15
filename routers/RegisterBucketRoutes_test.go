@@ -33,6 +33,7 @@ var bucketRoutes = []struct {
 	{http.MethodPut, "/object/rename", true},
 	{http.MethodGet, "/folder", false},
 	{http.MethodGet, "/folders", false},
+	{http.MethodGet, "/contents", false},
 	{http.MethodPost, "/folder", true},
 	{http.MethodPut, "/folder", true},
 	{http.MethodDelete, "/folder", true},

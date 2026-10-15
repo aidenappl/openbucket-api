@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/aidenappl/openbucket-api/timing"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
@@ -11,6 +12,8 @@ import (
 // ListFolders returns the common prefixes directly under prefix, up to
 // MaxListEntries; truncated reports that more exist.
 func ListFolders(ctx context.Context, bucket string, prefix string) (folders []string, truncated bool, err error) {
+	defer timing.Track(ctx, "storage")()
+
 	s3Client, err := GetS3Client(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get S3 client: %w", err)

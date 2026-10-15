@@ -13,6 +13,7 @@ import (
 	"github.com/aidenappl/openbucket-api/responder"
 	"github.com/aidenappl/openbucket-api/sso"
 	"github.com/aidenappl/openbucket-api/structs"
+	"github.com/aidenappl/openbucket-api/timing"
 	"github.com/aidenappl/openbucket-api/tools"
 )
 
@@ -54,11 +55,18 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// to next is unchanged.
 		checkCtx := correlatedContext(r)
 
+		// The auth span ends where the handler starts (or the request fails).
+		endAuth := timing.Track(r.Context(), "auth")
+		proceed := func(r *http.Request) {
+			endAuth()
+			next.ServeHTTP(w, r)
+		}
+
 		// Try Bearer token from Authorization header
 		if token := extractBearerToken(r); token != "" {
 			if user := validateToken(checkCtx, token); user != nil {
 				ctx := context.WithValue(r.Context(), UserContextKey, user)
-				next.ServeHTTP(w, r.WithContext(ctx))
+				proceed(r.WithContext(ctx))
 				return
 			}
 		}
@@ -76,7 +84,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			if err == nil {
 				if user := sessionUser(sess); user != nil {
 					ctx := context.WithValue(oidcsession.WithSession(r.Context(), sess), UserContextKey, user)
-					next.ServeHTTP(w, r.WithContext(ctx))
+					proceed(r.WithContext(ctx))
 					return
 				}
 			} else if !errors.Is(err, oidcsession.ErrNoSession) && !errors.Is(err, oidcsession.ErrSessionEnded) {
@@ -87,7 +95,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		if cookie, err := r.Cookie(obAccessToken); err == nil && cookie.Value != "" {
 			if user := validateToken(checkCtx, cookie.Value); user != nil {
 				ctx := context.WithValue(r.Context(), UserContextKey, user)
-				next.ServeHTTP(w, r.WithContext(ctx))
+				proceed(r.WithContext(ctx))
 				return
 			}
 		}

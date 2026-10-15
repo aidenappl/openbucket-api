@@ -3,6 +3,9 @@ package aws
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+	"time"
 
 	"github.com/aidenappl/openbucket-api/cache"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -21,6 +24,29 @@ func GetSessionFromContext(ctx context.Context) (*tools.SessionClaims, error) {
 		return nil, fmt.Errorf("no session found in context")
 	}
 	return sessionData, nil
+}
+
+// storageHTTPClient is shared by every S3 session.
+//
+// ⚠️ The SDK default is http.DefaultClient, which keeps 2 idle connections
+// per host. The storage servers are reached through Cloudflare
+// (cdn.appleby.cloud, cdn.trailblaze.to), so a 100-key bulk HEAD opened ~98
+// fresh TCP+TLS connections every time, and every listing page after a quiet
+// spell paid a handshake. This pool keeps them warm and negotiates HTTP/2,
+// which multiplexes concurrent requests over one connection.
+//
+// No overall Timeout: downloads stream objects of any size.
+var storageHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          256,
+		MaxIdleConnsPerHost:   128,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
 }
 
 // CreateAWSSession creates an AWS session from context session claims.
@@ -50,6 +76,7 @@ func CreateAWSSession(ctx context.Context) (*session.Session, error) {
 		Endpoint:         aws.String(sessionClaims.Endpoint),
 		Region:           aws.String(sessionClaims.Region),
 		S3ForcePathStyle: aws.Bool(true),
+		HTTPClient:       storageHTTPClient,
 	}
 
 	if sessionClaims.AccessKey != nil && sessionClaims.SecretKey != nil {
