@@ -35,6 +35,7 @@ func RegisterBucketRoutes(r *mux.Router) {
 	// Folder operations
 	r.HandleFunc("/folder", HandleGetFolder).Methods(http.MethodGet)
 	r.HandleFunc("/folders", HandleListFolders).Methods(http.MethodGet)
+	r.HandleFunc("/contents", HandleListContents).Methods(http.MethodGet) // folders + objects, one listing
 	r.HandleFunc("/folder", write(HandleCreateFolder)).Methods(http.MethodPost)
 	r.HandleFunc("/folder", write(HandleUpdateFolder)).Methods(http.MethodPut)
 	r.HandleFunc("/folder", write(HandleDeleteFolder)).Methods(http.MethodDelete)

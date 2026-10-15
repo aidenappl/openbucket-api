@@ -63,6 +63,7 @@ func main() {
 	// Global middleware
 	r.Use(maxBodyMiddleware)
 	r.Use(middleware.LoggingMiddleware)
+	r.Use(middleware.GzipMiddleware)
 	r.Use(middleware.CSRFMiddleware)
 
 	// ── Auth Endpoints (public) ──────────────────────────────────────────
@@ -132,14 +133,19 @@ func main() {
 	admin.HandleFunc("/instances/{id}/proxy/{path:.*}", middleware.RequireAdmin(routers.HandleAdminInstanceProxy)).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 
 	// ── CORS ─────────────────────────────────────────────────────────────
+	allowedOrigins := []string{
+		"https://openbucket.local.appleby.cloud:3010",
+		"https://openbucket.appleby.cloud",
+	}
+	r.Use(middleware.ExposeTiming(allowedOrigins))
 	corsMiddleware := cors.New(cors.Options{
-		AllowedOrigins: []string{
-			"https://openbucket.local.appleby.cloud:3010",
-			"https://openbucket.appleby.cloud",
-		},
+		AllowedOrigins:   allowedOrigins,
 		AllowCredentials: true,
 		AllowedHeaders:   []string{"Content-Type", "Authorization", "X-Requested-With", "Accept", "X-CSRF-Token"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		// Browsers cache a preflight for 5 s without this, so nearly every
+		// JSON POST/PUT/DELETE (bulk HEAD included) paid an extra round trip.
+		MaxAge: 3600,
 	})
 
 	// ── Server ───────────────────────────────────────────────────────────

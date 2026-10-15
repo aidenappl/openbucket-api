@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aidenappl/openbucket-api/timing"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
@@ -27,6 +28,8 @@ const MaxListEntries = 10000
 // continuation token — openbucket-go never did (fixed in openbucket-go), so
 // folders silently stopped at 1000 entries.
 func ListObjects(ctx context.Context, bucket, prefix string) (objects []*s3.Object, truncated bool, err error) {
+	defer timing.Track(ctx, "storage")()
+
 	s3Client, err := GetS3Client(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get S3 client: %w", err)

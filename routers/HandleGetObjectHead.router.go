@@ -11,6 +11,7 @@ import (
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/responder"
+	"github.com/aidenappl/openbucket-api/timing"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
@@ -40,7 +41,9 @@ func HandleGetObjectHead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	endStorage := timing.Track(r.Context(), "storage")
 	res, err := aws.GetObjectHead(r.Context(), bucket, key)
+	endStorage()
 	if err != nil {
 		if aws.CheckError(err, w, r) {
 			return
@@ -88,6 +91,9 @@ func handleBulkObjectHead(bucket string, w http.ResponseWriter, r *http.Request)
 	// Use the request context for all goroutines
 	ctx := r.Context()
 
+	// One span for the whole fan-out: per-call spans would sum to far more
+	// than the wall time.
+	endStorage := timing.Track(ctx, "storage")
 	for i, key := range req.Keys {
 		wg.Add(1)
 		go func(idx int, k string, ctx context.Context) {
@@ -102,6 +108,7 @@ func handleBulkObjectHead(bucket string, w http.ResponseWriter, r *http.Request)
 	}
 
 	wg.Wait()
+	endStorage()
 
 	responder.New(w, results, "Bulk object heads retrieved successfully")
 }

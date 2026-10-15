@@ -54,7 +54,7 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 | `db/migrations/` | — | Numbered `.sql` files, applied at startup and tracked in `migrations_applied`. |
 | `env/env.go` | `env` | `Init()` resolves config from Keyring/env. |
 | `bootstrap/` | `bootstrap` | `EnsureAdminUser` — first-run admin from `OB_ADMIN_EMAIL`/`OB_ADMIN_PASSWORD`. |
-| `middleware/` | `middleware` | `AuthMiddleware`, `Protected`, `RequireAdmin`, `RequireEditor`, `RejectPending`, `SessionMiddleware`, `CSRFMiddleware`, logging. `correlation.go`: inbound request/trace ids, forwarded on SSO token refreshes. |
+| `middleware/` | `middleware` | `AuthMiddleware`, `Protected`, `RequireAdmin`, `RequireEditor`, `RejectPending`, `SessionMiddleware`, `CSRFMiddleware`, `LoggingMiddleware` (method, URI, status, duration; attaches the `timing` recorder → `Server-Timing`), `GzipMiddleware` (JSON only), `ExposeTiming` (`Timing-Allow-Origin` for the CORS origins). `correlation.go`: inbound request/trace ids, forwarded on SSO token refreshes. |
 | `jwt/` | `jwt` | Access (15m) and refresh (7d) token minting/validation. Has tests. |
 | `query/` | `query` | `users`, `sessions`, `settings`, `instances`, `api_tokens`. SSO sessions/states are `go-oidc-session/sqlstore`. |
 | `routers/` | `routers` | Handlers. `RegisterBucketRoutes.router.go` mounts the session-scoped object/folder routes and applies the role check. Some have tests (`HandleLogin_test.go`, `RegisterBucketRoutes_test.go`). |
@@ -62,7 +62,8 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 | `tools/` | `tools` | `Password`, `Crypto`, `Validate`, `DecodeSession`, `ApiToken`. Several have tests. |
 | `sso/` | `sso` | SSO config (`sso.*` settings) and `session.go`: the `go-oidc-session` `Manager` (rebuilt by `Reload()` on config save), the user resolver, and the token `Sealer` over `tools.Encrypt`. No provider-specific code. |
 | `responder/` | `responder` | Envelopes: `New`, `NewWithPagination` (adds `pagination`, e.g. `Truncation`). **Note: no `QueryError` helper** — use `SendError(w, http.StatusInternalServerError, msg, err)`. |
-| `aws/` | `aws` | S3 client wrappers and error mapping. |
+| `aws/` | `aws` | S3 client wrappers and error mapping. All sessions share `storageHTTPClient` (pooled keep-alive, HTTP/2). `ListContents` = folders + objects in one listing. |
+| `timing/` | `timing` | Per-request spans (`Track(ctx, "storage")`) rendered as `Server-Timing: auth;dur=…, storage;dur=…, total;dur=…`. No-op without a recorder. |
 
 ## Running, building & testing
 
@@ -93,12 +94,22 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
   be silently ignored.
 - **Path traversal is checked explicitly** — `strings.Contains(req.Key, "..")` rejects. Keep
   that check on any new key-accepting handler.
-- **Listings are capped and say so.** `GET /objects` and `GET /folders` return at most
+- **One listing per folder view: `GET /contents?prefix=`** returns `{folders, objects}` from a
+  single delimited listing (`aws.ListContents`; prefix normalised with a trailing `/`, the folder's
+  own marker left out). openbucket-web uses it; `GET /folders` and `GET /objects` stay for other
+  clients (MCP, CLI) — the console calling both meant two full listings of the same prefix.
+- **Listings are capped and say so.** `GET /contents`, `GET /objects` and `GET /folders` return at most
   `aws.MaxListEntries` (10,000) entries and add `pagination: {truncated, limit}` to the envelope
   (`responder.NewWithPagination` / `responder.Truncation`). Plain `responder.New` never emits a
   `pagination` key. Every page loop relies on the storage server returning
   `NextContinuationToken`: openbucket-go didn't until October 2026, so every listing — and
   `DeleteFolder` / `RenameFolder`, which use the same loop — silently stopped at 1,000 keys.
+- **Storage calls are timed.** Wrap new storage work in `defer timing.Track(ctx, "storage")()`
+  (one span around a fan-out, not one per goroutine — spans with one name are summed). The
+  browser's network panel then shows where a slow request spent its time.
+- **The storage client is shared and pooled** (`aws.storageHTTPClient`). Never build sessions on
+  the SDK default (`http.DefaultClient`, 2 idle connections per host): the storage servers are
+  reached through Cloudflare, and a 100-key bulk HEAD then opened ~98 new TLS connections.
 - **Query parameters are typed carefully.** `expiration` on presign is **integer seconds**
   (`presignExpiration`: default 3600; ≤ 0 or non-numeric → 400; values over 86400 are clamped to
   **86400**) — not a duration string. The response's `expiration` is what was actually granted;
@@ -296,6 +307,9 @@ this service keeps its own users and no code or config names a specific provider
     user's role in Admin → Users if they should write.
   - *`Invalid expiration time` on presign* — a duration string was sent instead of seconds.
   - *Container healthy but routes 404* — an old image; the deploy step didn't run.
+  - *A slow console request* — read its `Server-Timing` (browser network panel) or the log
+    line (`GET /core/v1/17/contents?prefix=hotels%2F 200 412ms`): `auth` is the DB/SSO check,
+    `storage` the round trips to openbucket-go (through Cloudflare), the rest is this API.
 
 ## Rules & guardrails
 
