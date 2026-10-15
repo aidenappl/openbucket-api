@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/middleware"
@@ -131,20 +130,14 @@ func handleBulkModifyObjectACL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := make([]bulkACLResult, len(req.Keys))
-	var wg sync.WaitGroup
 	ctx := r.Context()
 
 	acl := string(req.ACL)
-	for i, key := range req.Keys {
-		wg.Add(1)
-		go func(idx int, k string, b string, a string) {
-			defer wg.Done()
-			err := aws.ModifyObjectACL(ctx, b, k, a)
-			results[idx] = bulkACLResult{Key: k, Success: err == nil}
-		}(i, key, bucket, acl)
-	}
-
-	wg.Wait()
+	forEachLimited(len(req.Keys), func(idx int) {
+		k := req.Keys[idx]
+		err := aws.ModifyObjectACL(ctx, bucket, k, acl)
+		results[idx] = bulkACLResult{Key: k, Success: err == nil}
+	})
 
 	responder.New(w, results, "Bulk ACL modification complete")
 }
