@@ -306,8 +306,11 @@ this service keeps its own users and no code or config names a specific provider
   endpoint in `sessions` every 30 s — `GET <endpoint>/_health` over the public URL and, when
   mapped, the LAN address — and emits `storage.health` (info when 200, error otherwise, with
   `endpoint`, `via`, `status`, `latency_ms`). Alert rule **"openbucket storage unhealthy"** fires on
-  errors. Credentials are the shared Keyring `MONITOR_APPLEBY_INGEST_URL` / `_KEY`, granted to the
-  `openbucket-api` token; a URL without a path gets `/v1/events` appended (`env.ingestURL` — the bare
+  errors. Credentials: Keyring `OB_MONITOR_INGEST_KEY` (an ingest key for this service, zone `appleby`),
+  falling back to the shared `MONITOR_APPLEBY_INGEST_KEY` — which Monitor rejected with 401 in
+  October 2026 — and the shared `MONITOR_APPLEBY_INGEST_URL`, all granted to the `openbucket-api`
+  token. Alert rules: "openbucket storage unhealthy" (P1) and "openbucket storage probe silent"
+  (P2, absence; enable once events flow); a URL without a path gets `/v1/events` appended (`env.ingestURL` — the bare
   host 404s). Endpoints are normalised first: older sessions store bare hosts (`cdn.trailblaze.to`,
   `s3.appleby.cloud` — another name for the APLB server), treated as `https://`, which also lets
   them use the LAN mapping. Added after cdn.trailblaze.to hung ~15 h unnoticed (openbucket-go#33);

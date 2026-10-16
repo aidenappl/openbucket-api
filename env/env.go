@@ -112,7 +112,8 @@ func Init() {
 
 	// The shared appleby-zone ingest credentials (Keyring), as other services use.
 	MonitorIngestURL = ingestURL(getOr(ctx, "MONITOR_APPLEBY_INGEST_URL", ""))
-	MonitorIngestKey = getOr(ctx, "MONITOR_APPLEBY_INGEST_KEY", "")
+	// This service's own ingest key wins; the shared one was rejected (401).
+	MonitorIngestKey = getOr(ctx, "OB_MONITOR_INGEST_KEY", getOr(ctx, "MONITOR_APPLEBY_INGEST_KEY", ""))
 
 	fmt.Println("Connecting to Keyring... ✅ Done")
 }
