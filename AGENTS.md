@@ -306,10 +306,12 @@ this service keeps its own users and no code or config names a specific provider
   endpoint in `sessions` every 30 s — `GET <endpoint>/_health` over the public URL and, when
   mapped, the LAN address — and emits `storage.health` (info when 200, error otherwise, with
   `endpoint`, `via`, `status`, `latency_ms`). Alert rule **"openbucket storage unhealthy"** fires on
-  errors. Credentials: Keyring `OB_MONITOR_INGEST_KEY` (an ingest key for this service, zone `appleby`),
-  falling back to the shared `MONITOR_APPLEBY_INGEST_KEY` — which Monitor rejected with 401 in
-  October 2026 — and the shared `MONITOR_APPLEBY_INGEST_URL`, all granted to the `openbucket-api`
-  token. Alert rules: "openbucket storage unhealthy" (P1) and "openbucket storage probe silent"
+  errors. Credentials: Keyring `OB_MONITOR_INGEST_KEY` (ingest key "Openbucket Ingest", zone `appleby`;
+  falls back to the shared `MONITOR_APPLEBY_INGEST_KEY`), granted to the `openbucket-api` token.
+  The ingest URL defaults to `env.DefaultMonitorIngestURL`
+  (`https://appleby-monitor-api.appleby.cloud/v1/events`), overridable with `OB_MONITOR_INGEST_URL`;
+  the shared Keyring `MONITOR_APPLEBY_INGEST_URL` is deliberately not used — with it every batch
+  failed (404, then 401 with both keys). Alert rules: "openbucket storage unhealthy" (P1) and "openbucket storage probe silent"
   (P2, absence; enable once events flow); a URL without a path gets `/v1/events` appended (`env.ingestURL` — the bare
   host 404s). Endpoints are normalised first: older sessions store bare hosts (`cdn.trailblaze.to`,
   `s3.appleby.cloud` — another name for the APLB server), treated as `https://`, which also lets
