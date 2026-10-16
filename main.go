@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	monitor "github.com/aidenappl/go-monitor"
 	"github.com/aidenappl/openbucket-api/aws"
@@ -18,13 +19,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 )
-
-func maxBodyMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 11<<20) // 11MB (10MB file + multipart overhead)
-		next.ServeHTTP(w, r)
-	})
-}
 
 func main() {
 	// Load secrets from Keyring
@@ -84,7 +78,7 @@ func main() {
 	}).Methods(http.MethodGet)
 
 	// Global middleware
-	r.Use(maxBodyMiddleware)
+	r.Use(middleware.MaxBody)
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(middleware.GzipMiddleware)
 	r.Use(middleware.CSRFMiddleware)
@@ -172,12 +166,14 @@ func main() {
 	})
 
 	// ── Server ───────────────────────────────────────────────────────────
+	// Read/write deadlines are per request (middleware.Deadlines, extended
+	// for uploads and downloads by LongTransfer); a server-wide ReadTimeout cut
+	// uploads off at 15 s (openbucket-api#12).
 	server := &http.Server{
-		Addr:         ":" + env.Port,
-		Handler:      corsMiddleware.Handler(r),
-		ReadTimeout:  15 * 1e9,
-		WriteTimeout: 60 * 1e9,
-		IdleTimeout:  120 * 1e9,
+		Addr:              ":" + env.Port,
+		Handler:           middleware.Deadlines(corsMiddleware.Handler(r)),
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	if env.TLSCert != "" && env.TLSKey != "" {
