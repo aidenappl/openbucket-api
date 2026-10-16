@@ -2,6 +2,7 @@ package routers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -44,6 +45,14 @@ func HandleUpdateFolder(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name != req.Folder {
 		err := aws.RenameFolder(r.Context(), req.Bucket, req.Folder, req.Name)
+		if errors.Is(err, aws.ErrDestinationExists) {
+			responder.SendError(w, http.StatusConflict, "a folder named "+req.Name+" already exists", err)
+			return
+		}
+		if errors.Is(err, aws.ErrFolderIntoItself) {
+			responder.SendError(w, http.StatusBadRequest, err.Error(), err)
+			return
+		}
 		if err != nil {
 			if aws.CheckError(err, w, r) {
 				return
