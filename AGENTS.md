@@ -125,6 +125,15 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
 - **The storage client is shared and pooled** (`aws.storageHTTPClient`). Never build sessions on
   the SDK default (`http.DefaultClient`, 2 idle connections per host): the storage servers are
   reached through Cloudflare, and a 100-key bulk HEAD then opened ~98 new TLS connections.
+- **Uploads stream; deadlines are per request.** `PUT /core/v1/{id}/object` reads the multipart
+  body part by part, spools the file to a temp file (never memory) and uploads from it — aws-sdk-go
+  v1 needs a seekable body to sign. Uploads are capped at `routers.MaxUploadBytes` (5 GB, the
+  console's limit; 413 above it); every other body at `middleware.MaxBodyBytes` (11 MB, which used
+  to apply to uploads too — files over ~10 MB failed). The server has only `ReadHeaderTimeout`;
+  `middleware.Deadlines` (wrapping the whole handler) sets 30 s read / 60 s write, and upload and
+  download (`GET /object`) get `middleware.LongTransfer` (2 h). Was: 15 s `ReadTimeout`, 60 s
+  `WriteTimeout` for everything (openbucket-api#12). The console and API resolve to a LAN address
+  (no Cloudflare in front), so no proxy body cap applies.
 - **Changing your own password needs the current one.** `PUT /auth/self` with `password` requires
   `current_password` (400 if missing or wrong — 400, not 401, because clients treat 401 as an
   expired session), refuses SSO accounts, and rejects an unchanged password

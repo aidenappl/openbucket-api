@@ -20,8 +20,10 @@ func RegisterBucketRoutes(r *mux.Router) {
 	write := middleware.RequireEditor
 
 	// Object operations
-	r.HandleFunc("/object", write(HandleUpload)).Methods(http.MethodPut)
-	r.HandleFunc("/object", HandleGetObject).Methods(http.MethodGet)
+	// Uploads and downloads get long deadlines (middleware.LongTransfer).
+	long := middleware.LongTransfer
+	r.HandleFunc("/object", long(write(HandleUpload))).Methods(http.MethodPut)
+	r.HandleFunc("/object", long(HandleGetObject)).Methods(http.MethodGet)
 	r.HandleFunc("/object/head", HandleGetObjectHead).Methods(http.MethodGet)
 	r.HandleFunc("/object/head", HandleGetObjectHead).Methods(http.MethodPost) // bulk HEAD: a read
 	r.HandleFunc("/object/acl", HandleGetObjectACL).Methods(http.MethodGet)
