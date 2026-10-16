@@ -44,6 +44,10 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
   (BFF pattern, RFC 10017). It runs the login, holds the provider's tokens server-side in
   `oidc_sessions`, refreshes them when due and ends the session when the provider refuses.
   Pinned at **v0.1.0**; upgrade with `go get github.com/aidenappl/go-oidc-session@vX.Y.Z`.
+- **Activity sink:** `github.com/aidenappl/go-forta/activity` (v1.13.0) — the stdlib-only reporter
+  subpackage, used generically; no Forta auth code. Off unless `OB_ACTIVITY_REPORT_URL` is set.
+  It requires `go 1.26.9`, which raised this module's `go` directive (the image builds on
+  `golang:1.26-alpine`).
 
 ## Project structure
 
@@ -293,6 +297,28 @@ defined but applied nowhere, so viewers could write. `TestBucketRoutesEnforceRol
 route for every role **and fails if a route is registered without being classified** — add new
 routes to its table. Sessions themselves (`/core/v1/session[s]`) stay open to every non-pending
 role: they are personal and hold the user's own keys.
+
+### Activity sink (`routers/activity_sink.go`, optional)
+
+When `OB_ACTIVITY_REPORT_URL` is set (Keyring; prod `https://auth.appleby.cloud/internal/activity`)
+and SSO is enabled with a client secret, every **successful (2xx) mutating request by an SSO user**
+is posted there as `{sub, action, outcome: "success", details}`, authenticated with the DB-backed
+SSO client id/secret. In production that puts uploads, deletes, renames, ACL and folder changes,
+sessions and admin changes on the user's Forta activity trail.
+
+- OpenBucket has no audit table, so it is **one middleware keyed on the matched route**
+  (`sinkActions`: `PUT /object` → `object.upload`, …). An unlisted mutating route is still
+  reported as `<first segment>.<method>`; name it in `sinkActions` when you add it. GETs and the
+  bulk-HEAD POST are reads and never reported.
+- **Mounted twice on purpose:** `core`/`admin` with `ActivitySink(false)` and the bucket subrouter
+  (after `SessionMiddleware`, the only place the bucket is in context) with `ActivitySink(true)`.
+  Parent middleware also wraps subrouter routes, so each instance skips the other's routes —
+  `TestActivitySinkMountedTwiceReportsOnce` fails on a double report.
+- Details are identifiers only: `bucket`, `key`, `newkey`, `folder`, `id`, and `method` for the
+  instance admin proxy — never bodies, ACL contents or tokens.
+- Skipped: local password users and subjects that still look like an email (pre-heal rows).
+- Fire-and-forget; the reporter is rebuilt when the SSO client changes. Failures surface as
+  `activity_sink.report.failed`.
 
 ## Ecosystem & related repos
 

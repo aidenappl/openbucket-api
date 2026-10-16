@@ -109,6 +109,7 @@ func main() {
 	core := r.PathPrefix("/core/v1/").Subrouter()
 	core.Use(middleware.AuthMiddleware)
 	core.Use(middleware.RejectPending)
+	core.Use(routers.ActivitySink(false))
 
 	core.HandleFunc("/session", routers.HandleCreateSession).Methods(http.MethodPost)
 	core.HandleFunc("/session/{id}", routers.HandleDeleteSession).Methods(http.MethodDelete)
@@ -117,6 +118,7 @@ func main() {
 	// ── Bucket Operations (protected + session-scoped) ───────────────────
 	bucket := core.PathPrefix("/{sessionId}").Subrouter()
 	bucket.Use(middleware.SessionMiddleware)
+	bucket.Use(routers.ActivitySink(true))
 	// Object + folder routes; writes require the editor role (see the func).
 	routers.RegisterBucketRoutes(bucket)
 
@@ -124,6 +126,7 @@ func main() {
 	admin := r.PathPrefix("/admin/").Subrouter()
 	admin.Use(middleware.AuthMiddleware)
 	admin.Use(middleware.RejectPending)
+	admin.Use(routers.ActivitySink(false))
 
 	// User Management
 	admin.HandleFunc("/users", middleware.RequireAdmin(routers.HandleAdminListUsers)).Methods(http.MethodGet)

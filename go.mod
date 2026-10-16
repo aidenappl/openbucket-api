@@ -15,6 +15,8 @@ require (
 
 require github.com/aidenappl/go-monitor v0.0.8
 
+require github.com/aidenappl/go-forta v1.13.0
+
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/aidenappl/go-oidc-session v0.1.2
