@@ -159,6 +159,29 @@ func ListSessions(engine db.Queryable, req ListSessionsRequest) ([]structs.Sessi
 	return sessions, rows.Err()
 }
 
+// ListSessionEndpoints returns every distinct storage endpoint sessions point
+// at — the storage servers this API depends on.
+func ListSessionEndpoints(engine db.Queryable) ([]string, error) {
+	qStr, args, err := sq.Select("DISTINCT endpoint").From("sessions").Where("endpoint <> ''").ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+	rows, err := engine.Query(qStr, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var e string
+		if err := rows.Scan(&e); err != nil {
+			return nil, fmt.Errorf("failed to scan endpoint: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // DeleteSession removes a session by ID, scoped to the owning user.
 func DeleteSession(engine db.Queryable, sessionID int64, userID int64) error {
 	q := sq.Delete("sessions").

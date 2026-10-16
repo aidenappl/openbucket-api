@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 
+	monitor "github.com/aidenappl/go-monitor"
 	"github.com/aidenappl/openbucket-api/aws"
 	"github.com/aidenappl/openbucket-api/bootstrap"
 	"github.com/aidenappl/openbucket-api/db"
@@ -12,6 +14,7 @@ import (
 	"github.com/aidenappl/openbucket-api/middleware"
 	"github.com/aidenappl/openbucket-api/routers"
 	"github.com/aidenappl/openbucket-api/sso"
+	"github.com/aidenappl/openbucket-api/storageprobe"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 )
@@ -30,6 +33,19 @@ func main() {
 	// Reach storage servers on the LAN where configured (and reachable).
 	aws.InitInternalEndpoints(env.StorageInternalEndpoints)
 
+	// Monitor (zone appleby). Without a key, events are dropped silently.
+	if err := monitor.Init(monitor.Config{
+		Service:       "openbucket-api",
+		Env:           "prod",
+		IngestURL:     env.MonitorIngestURL,
+		APIKey:        env.MonitorIngestKey,
+		GzipEnabled:   true,
+		DisableStdout: true,
+	}); err != nil {
+		log.Printf("monitor: %v", err)
+	}
+	defer monitor.Shutdown()
+
 	// Initialize the database connection
 	db.Init()
 
@@ -42,6 +58,9 @@ func main() {
 
 	// Run database migrations
 	db.RunMigrations()
+
+	// Report every storage server's health to Monitor (alert: storage.health errors).
+	storageprobe.Start(context.Background())
 
 	// Bootstrap admin user (first-run only)
 	if err := bootstrap.EnsureAdminUser(db.DB); err != nil {

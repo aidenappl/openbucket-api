@@ -63,6 +63,7 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 | `sso/` | `sso` | SSO config (`sso.*` settings) and `session.go`: the `go-oidc-session` `Manager` (rebuilt by `Reload()` on config save), the user resolver, and the token `Sealer` over `tools.Encrypt`. No provider-specific code. |
 | `responder/` | `responder` | Envelopes: `New`, `NewWithPagination` (adds `pagination`, e.g. `Truncation`). **Note: no `QueryError` helper** — use `SendError(w, http.StatusInternalServerError, msg, err)`. |
 | `aws/` | `aws` | S3 client wrappers and error mapping. All sessions share `storageHTTPClient` (pooled keep-alive, HTTP/2). `ListContents` = folders + objects in one listing. |
+| `storageprobe/` | `storageprobe` | Storage health checks every 30 s → Monitor `storage.health` events (see Operations). |
 | `timing/` | `timing` | Per-request spans (`Track(ctx, "storage")`) rendered as `Server-Timing: auth;dur=…, storage;dur=…, total;dur=…`. No-op without a recorder. |
 
 ## Running, building & testing
@@ -301,6 +302,13 @@ this service keeps its own users and no code or config names a specific provider
   with `cache: false`. Jobs stuck in "Queued" mean the broker or the host is down — check the
   `gh-runner-broker` service in Monitor (zone `appleby`).
 
+- **Monitor (zone `appleby`, service `openbucket-api`):** `storageprobe` checks every storage
+  endpoint in `sessions` every 30 s — `GET <endpoint>/_health` over the public URL and, when
+  mapped, the LAN address — and emits `storage.health` (info when 200, error otherwise, with
+  `endpoint`, `via`, `status`, `latency_ms`). Alert rule **"openbucket storage unhealthy"** fires on
+  errors. Credentials are the shared Keyring `MONITOR_APPLEBY_INGEST_URL` / `_KEY`, granted to the
+  `openbucket-api` token. Added after cdn.trailblaze.to hung ~15 h unnoticed (openbucket-go#33);
+  `/_health` needs openbucket-go#34.
 - **Storage over the LAN:** `OB_STORAGE_INTERNAL_ENDPOINTS` lives in **Keyring**, granted to the
   `openbucket-api` token (id 1). Not in the Lattice env: the container/compose env returns the
   Keyring credentials masked, so rewriting it would clobber them. A plain env var would override

@@ -13,6 +13,8 @@ require (
 	golang.org/x/crypto v0.50.0
 )
 
+require github.com/aidenappl/go-monitor v0.0.8
+
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/aidenappl/go-oidc-session v0.1.2
