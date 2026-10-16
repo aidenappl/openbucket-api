@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -10,6 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+// ErrFolderIntoItself is returned when the destination is inside the source.
+var ErrFolderIntoItself = errors.New("cannot move a folder into itself")
+
 // RenameFolder renames a folder by copying all objects under sourcePrefix to destPrefix
 // and then deleting the originals. Both prefixes should end in "/".
 func RenameFolder(ctx context.Context, bucket, sourcePrefix, destPrefix string) error {
@@ -17,9 +21,23 @@ func RenameFolder(ctx context.Context, bucket, sourcePrefix, destPrefix string) 
 		return fmt.Errorf("both source and destination must be folder-like (end in '/')")
 	}
 
+	if strings.HasPrefix(destPrefix, sourcePrefix) {
+		// Copying a/ into a/b/ would list its own copies while paging.
+		return ErrFolderIntoItself
+	}
+
 	s3Client, err := GetS3Client(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
+	// Never merge into an existing folder: same-named files would be replaced.
+	taken, err := prefixInUse(ctx, s3Client, bucket, destPrefix)
+	if err != nil {
+		return fmt.Errorf("failed to check destination: %w", err)
+	}
+	if taken {
+		return ErrDestinationExists
 	}
 
 	var errs []string

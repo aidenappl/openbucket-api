@@ -10,7 +10,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func RenameObject(ctx context.Context, bucket, sourceKey, destinationKey string) error {
+// RenameObject moves sourceKey to destinationKey (copy, confirm, delete). An
+// existing destination is ErrDestinationExists unless overwrite is set.
+func RenameObject(ctx context.Context, bucket, sourceKey, destinationKey string, overwrite bool) error {
 	// Reject renaming folders (by convention, keys ending in '/')
 	if strings.HasSuffix(sourceKey, "/") {
 		return fmt.Errorf("cannot rename a folder object: %q", sourceKey)
@@ -19,6 +21,19 @@ func RenameObject(ctx context.Context, bucket, sourceKey, destinationKey string)
 	s3Client, err := GetS3Client(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get S3 client: %w", err)
+	}
+
+	if sourceKey == destinationKey {
+		return nil // nothing to move; a self-copy is refused by storage anyway
+	}
+	if !overwrite {
+		taken, err := objectExists(ctx, s3Client, bucket, destinationKey)
+		if err != nil {
+			return fmt.Errorf("failed to check destination: %w", err)
+		}
+		if taken {
+			return ErrDestinationExists
+		}
 	}
 
 	// Step 1: Copy the object

@@ -1,6 +1,7 @@
 package routers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -47,7 +48,13 @@ func HandleRenameObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := aws.RenameObject(r.Context(), req.Bucket, req.Key, req.NewKey)
+	// ?overwrite=true replaces an existing destination; otherwise 409.
+	overwrite := r.URL.Query().Get("overwrite") == "true"
+	err := aws.RenameObject(r.Context(), req.Bucket, req.Key, req.NewKey, overwrite)
+	if errors.Is(err, aws.ErrDestinationExists) {
+		responder.SendError(w, http.StatusConflict, "an object named "+req.NewKey+" already exists", err)
+		return
+	}
 	if err != nil {
 		if aws.CheckError(err, w, r) {
 			return

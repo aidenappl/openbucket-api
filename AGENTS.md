@@ -125,6 +125,12 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
 - **The storage client is shared and pooled** (`aws.storageHTTPClient`). Never build sessions on
   the SDK default (`http.DefaultClient`, 2 idle connections per host): the storage servers are
   reached through Cloudflare, and a 100-key bulk HEAD then opened ~98 new TLS connections.
+- **Rename/move never clobbers by accident.** `PUT /object/rename?key=&newKey=` answers **409** when
+  `newKey` exists, unless `&overwrite=true`; renaming a key to itself is a no-op. `PUT /folder`
+  (folder rename) answers 409 when the destination folder has anything in it (folders never
+  merge) and 400 for a move into itself (`a/` → `a/b/`). openbucket-go's CopyObject overwrites
+  like S3 since openbucket-go#38, so these checks are the only thing between a rename and
+  silently replacing a file.
 - **Uploads stream; deadlines are per request.** `PUT /core/v1/{id}/object` reads the multipart
   body part by part, spools the file to a temp file (never memory) and uploads from it — aws-sdk-go
   v1 needs a seekable body to sign. Uploads are capped at `routers.MaxUploadBytes` (5 GB, the
