@@ -34,9 +34,19 @@ var probe = func(u string) bool {
 	return true
 }
 
+// normalizeEndpoint lowercases, trims a trailing "/" and adds "https://" when
+// there is no scheme — older sessions store bare hosts ("cdn.trailblaze.to"),
+// which the AWS SDK treats as https.
 func normalizeEndpoint(e string) string {
-	return strings.ToLower(strings.TrimRight(strings.TrimSpace(e), "/"))
+	e = strings.ToLower(strings.TrimRight(strings.TrimSpace(e), "/"))
+	if e != "" && !strings.Contains(e, "://") {
+		e = "https://" + e
+	}
+	return e
 }
+
+// NormalizeEndpoint is normalizeEndpoint, for the storage prober.
+func NormalizeEndpoint(e string) string { return normalizeEndpoint(e) }
 
 // InitInternalEndpoints parses OB_STORAGE_INTERNAL_ENDPOINTS
 // ("public=internal,public=internal") and keeps the entries whose internal

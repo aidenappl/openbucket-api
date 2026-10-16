@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -54,7 +55,8 @@ func TestRoundChecksPublicAndLAN(t *testing.T) {
 	var got []Result
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()
-	Round(context.Background(), []string{srv.URL}, func(r Result) { got = append(got, r) })
+	// Duplicates (case, trailing slash) are checked once.
+	Round(context.Background(), []string{srv.URL, srv.URL + "/", strings.ToUpper(srv.URL[:4]) + srv.URL[4:]}, func(r Result) { got = append(got, r) })
 	// No LAN mapping configured in tests: one public check per endpoint.
 	if len(got) != 1 || got[0].Via != "public" || got[0].Endpoint != srv.URL || !got[0].OK() {
 		t.Fatalf("got %+v", got)

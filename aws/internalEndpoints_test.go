@@ -15,6 +15,7 @@ func TestInternalEndpoints(t *testing.T) {
 		{"https://CDN.appleby.cloud/", "http://10.15.10.222:8080"},
 		{"https://cdn.trailblaze.to", "https://cdn.trailblaze.to"}, // unreachable: kept public
 		{"https://other.example", "https://other.example"},
+		{"cdn.appleby.cloud", "http://10.15.10.222:8080"}, // bare host = https
 	}
 	for _, tt := range tests {
 		if got := internalEndpoint(tt.in); got != tt.want {
