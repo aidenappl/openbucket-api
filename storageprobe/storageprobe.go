@@ -75,8 +75,16 @@ func Targets(endpoint string) [][2]string {
 }
 
 // Round checks every endpoint once and reports each result through emit.
+// Endpoints are normalised ("cdn.example" = "https://cdn.example") and each
+// is checked once.
 func Round(ctx context.Context, endpoints []string, emit func(Result)) {
-	for _, e := range endpoints {
+	seen := map[string]bool{}
+	for _, raw := range endpoints {
+		e := aws.NormalizeEndpoint(raw)
+		if e == "" || seen[e] {
+			continue
+		}
+		seen[e] = true
 		for _, t := range Targets(e) {
 			emit(Check(ctx, e, t[0], t[1]))
 		}

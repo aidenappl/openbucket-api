@@ -3,6 +3,8 @@ package env
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strings"
 
 	keyring "github.com/aidenappl/go-keyring"
 )
@@ -50,6 +52,19 @@ var (
 	MonitorIngestKey string
 )
 
+// ingestURL returns the Monitor ingest endpoint for u: go-monitor needs the
+// full events path, and a bare host (as the Keyring copy may hold) got 404s.
+func ingestURL(u string) string {
+	u = strings.TrimRight(strings.TrimSpace(u), "/")
+	if u == "" {
+		return ""
+	}
+	if parsed, err := url.Parse(u); err == nil && (parsed.Path == "" || parsed.Path == "/") {
+		return u + "/v1/events"
+	}
+	return u
+}
+
 // Init loads all configuration from Keyring. The three KEYRING_* env vars
 // (KEYRING_URL, KEYRING_ACCESS_KEY_ID, KEYRING_SECRET_ACCESS_KEY) must be
 // set in the process environment. All application secrets are fetched from
@@ -96,7 +111,7 @@ func Init() {
 	StorageInternalEndpoints = getOr(ctx, "OB_STORAGE_INTERNAL_ENDPOINTS", "")
 
 	// The shared appleby-zone ingest credentials (Keyring), as other services use.
-	MonitorIngestURL = getOr(ctx, "MONITOR_APPLEBY_INGEST_URL", "")
+	MonitorIngestURL = ingestURL(getOr(ctx, "MONITOR_APPLEBY_INGEST_URL", ""))
 	MonitorIngestKey = getOr(ctx, "MONITOR_APPLEBY_INGEST_KEY", "")
 
 	fmt.Println("Connecting to Keyring... ✅ Done")

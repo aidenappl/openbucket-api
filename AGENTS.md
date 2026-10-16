@@ -307,7 +307,10 @@ this service keeps its own users and no code or config names a specific provider
   mapped, the LAN address — and emits `storage.health` (info when 200, error otherwise, with
   `endpoint`, `via`, `status`, `latency_ms`). Alert rule **"openbucket storage unhealthy"** fires on
   errors. Credentials are the shared Keyring `MONITOR_APPLEBY_INGEST_URL` / `_KEY`, granted to the
-  `openbucket-api` token. Added after cdn.trailblaze.to hung ~15 h unnoticed (openbucket-go#33);
+  `openbucket-api` token; a URL without a path gets `/v1/events` appended (`env.ingestURL` — the bare
+  host 404s). Endpoints are normalised first: older sessions store bare hosts (`cdn.trailblaze.to`,
+  `s3.appleby.cloud` — another name for the APLB server), treated as `https://`, which also lets
+  them use the LAN mapping. Added after cdn.trailblaze.to hung ~15 h unnoticed (openbucket-go#33);
   `/_health` needs openbucket-go#34.
 - **Storage over the LAN:** `OB_STORAGE_INTERNAL_ENDPOINTS` lives in **Keyring**, granted to the
   `openbucket-api` token (id 1). Not in the Lattice env: the container/compose env returns the
