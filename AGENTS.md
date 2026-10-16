@@ -125,6 +125,13 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
 - **The storage client is shared and pooled** (`aws.storageHTTPClient`). Never build sessions on
   the SDK default (`http.DefaultClient`, 2 idle connections per host): the storage servers are
   reached through Cloudflare, and a 100-key bulk HEAD then opened ~98 new TLS connections.
+- **Changing your own password needs the current one.** `PUT /auth/self` with `password` requires
+  `current_password` (400 if missing or wrong — 400, not 401, because clients treat 401 as an
+  expired session), refuses SSO accounts, and rejects an unchanged password
+  (`checkPasswordChange`). On success it revokes every token issued so far
+  (`query.RevokeUserTokensAt`, stamped from this process's clock) and sets fresh cookies in the
+  next whole second, so other sessions end and this one continues. Until October 2026 a session
+  alone could change the password (openbucket-api#11).
 - **Query parameters are typed carefully.** `expiration` on presign is **integer seconds**
   (`presignExpiration`: default 3600; ≤ 0 or non-numeric → 400; values over 86400 are clamped to
   **86400**) — not a duration string. The response's `expiration` is what was actually granted;

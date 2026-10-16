@@ -115,7 +115,7 @@ cookie-authenticated calls.
 | `/auth/sso/login`    | GET    | No   | Redirect to the SSO provider           |
 | `/auth/sso/callback` | GET    | No   | OAuth2 callback (server-side)          |
 | `/auth/self`         | GET    | Yes  | Get current user info                  |
-| `/auth/self`         | PUT    | Yes  | Update own name / password             |
+| `/auth/self`         | PUT    | Yes  | Update own name / password (`current_password` required; signs out other sessions) |
 | `/auth/logout`       | POST   | Yes  | Log out and clear auth cookies         |
 
 Tokens are set as `ob-access-token` / `ob-refresh-token` cookies, **not** returned in the

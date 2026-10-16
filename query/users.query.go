@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/aidenappl/openbucket-api/db"
@@ -265,6 +266,13 @@ func DeleteUser(engine db.Queryable, id int) error {
 // validateToken compares the token's `iat` against this stamp, so a stamp
 // invalidates access AND refresh tokens at once, with no per-token bookkeeping.
 // ─────────────────────────────────────────────────────────────────────────────
+// RevokeUserTokensAt is RevokeUserTokens with an explicit cut-off, for callers
+// that issue fresh tokens right after and need the stamp on their own clock.
+func RevokeUserTokensAt(engine db.Queryable, userID int64, at time.Time) error {
+	_, err := engine.Exec("UPDATE users SET tokens_revoked_at = ? WHERE id = ?", at, userID)
+	return err
+}
+
 func RevokeUserTokens(engine db.Queryable, userID int64) error {
 	_, err := engine.Exec("UPDATE users SET tokens_revoked_at = NOW() WHERE id = ?", userID)
 	return err
