@@ -52,6 +52,9 @@ var (
 	MonitorIngestKey string
 )
 
+// DefaultMonitorIngestURL is Monitor zone appleby's ingest endpoint.
+const DefaultMonitorIngestURL = "https://appleby-monitor-api.appleby.cloud/v1/events"
+
 // ingestURL returns the Monitor ingest endpoint for u: go-monitor needs the
 // full events path, and a bare host (as the Keyring copy may hold) got 404s.
 func ingestURL(u string) string {
@@ -110,10 +113,14 @@ func Init() {
 
 	StorageInternalEndpoints = getOr(ctx, "OB_STORAGE_INTERNAL_ENDPOINTS", "")
 
-	// The shared appleby-zone ingest credentials (Keyring), as other services use.
-	MonitorIngestURL = ingestURL(getOr(ctx, "MONITOR_APPLEBY_INGEST_URL", ""))
-	// This service's own ingest key wins; the shared one was rejected (401).
-	MonitorIngestKey = getOr(ctx, "OB_MONITOR_INGEST_KEY", getOr(ctx, "MONITOR_APPLEBY_INGEST_KEY", ""))
+	// Monitor, zone appleby. The documented ingest endpoint is the default;
+	// OB_MONITOR_INGEST_URL overrides it. The shared Keyring
+	// MONITOR_APPLEBY_INGEST_URL is not used: with it, every batch was
+	// rejected (404, then 401 with both the shared and a dedicated key).
+	MonitorIngestURL = ingestURL(getOr(ctx, "OB_MONITOR_INGEST_URL", DefaultMonitorIngestURL))
+	// This service's own ingest key wins over the shared one. Trimmed: a
+	// pasted value can carry a trailing newline.
+	MonitorIngestKey = strings.TrimSpace(getOr(ctx, "OB_MONITOR_INGEST_KEY", getOr(ctx, "MONITOR_APPLEBY_INGEST_KEY", "")))
 
 	fmt.Println("Connecting to Keyring... ✅ Done")
 }
