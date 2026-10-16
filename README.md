@@ -62,6 +62,7 @@ Set `issuer_url` (OIDC) — without it there is no signed id_token and no back-c
 | `OB_SSO_BUTTON_LABEL`    | `Sign in with SSO`     | Label returned by `/auth/sso/config`   |
 | `OB_SSO_AUTO_PROVISION`  | `true`                 | Create a `pending` user for unknown identities |
 | `OB_SSO_POST_LOGIN_URL`  | ``                     | Redirect target after a successful login |
+| `OB_ACTIVITY_REPORT_URL` | ``                     | Activity sink: successful changes by SSO users are mirrored here (prod: `https://auth.appleby.cloud/internal/activity`). Empty: off |
 
 ## Database
 

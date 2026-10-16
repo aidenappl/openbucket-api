@@ -43,6 +43,11 @@ var (
 	SSOAutoProvision  bool
 	SSOPostLoginURL   string
 
+	// ActivityReportURL (optional): successful changes by SSO users are
+	// mirrored here — the identity provider's per-user activity trail. Empty
+	// reports nothing. See routers/activity_sink.go.
+	ActivityReportURL string
+
 	// StorageInternalEndpoints maps public storage endpoints to LAN ones,
 	// "public=internal,…" — see aws.InitInternalEndpoints.
 	StorageInternalEndpoints string
@@ -112,6 +117,8 @@ func Init() {
 	SSOPostLoginURL = getOr(ctx, "OB_SSO_POST_LOGIN_URL", "")
 
 	StorageInternalEndpoints = getOr(ctx, "OB_STORAGE_INTERNAL_ENDPOINTS", "")
+
+	ActivityReportURL = strings.TrimSpace(getOr(ctx, "OB_ACTIVITY_REPORT_URL", ""))
 
 	// Monitor, zone appleby. The documented ingest endpoint is the default;
 	// OB_MONITOR_INGEST_URL overrides it. The shared Keyring
