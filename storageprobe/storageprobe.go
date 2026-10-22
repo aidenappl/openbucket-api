@@ -36,6 +36,7 @@ type Result struct {
 	Status    int    `json:"status"` // 0 when no response
 	LatencyMS int64  `json:"latency_ms"`
 	Error     string `json:"error,omitempty"`
+	Attempts  int    `json:"attempts"`
 }
 
 // OK reports a 200 from /_health.
@@ -43,8 +44,29 @@ func (r Result) OK() bool { return r.Status == http.StatusOK }
 
 var client = &http.Client{Timeout: 5 * time.Second}
 
-// Check probes base + "/_health".
+// RetryDelay is the pause before re-checking a failed endpoint. A single
+// failure is usually a Cloudflare connection reset, not an outage, so a
+// result is unhealthy only when two checks in a row fail.
+var RetryDelay = 2 * time.Second
+
+// Check probes base + "/_health", retrying once after RetryDelay on failure.
 func Check(ctx context.Context, endpoint, via, base string) Result {
+	r := checkOnce(ctx, endpoint, via, base)
+	r.Attempts = 1
+	if r.OK() {
+		return r
+	}
+	select {
+	case <-ctx.Done():
+		return r
+	case <-time.After(RetryDelay):
+	}
+	r = checkOnce(ctx, endpoint, via, base)
+	r.Attempts = 2
+	return r
+}
+
+func checkOnce(ctx context.Context, endpoint, via, base string) Result {
 	r := Result{Endpoint: endpoint, Via: via, URL: base + "/_health"}
 	start := time.Now()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.URL, nil)
