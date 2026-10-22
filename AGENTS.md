@@ -353,7 +353,8 @@ this service keeps its own users and no code or config names a specific provider
 - **Monitor (zone `appleby`, service `openbucket-api`):** `storageprobe` checks every storage
   endpoint in `sessions` every 30 s — `GET <endpoint>/_health` over the public URL and, when
   mapped, the LAN address — and emits `storage.health` (info when 200, error otherwise, with
-  `endpoint`, `via`, `status`, `latency_ms`). Alert rule **"openbucket storage unhealthy"** fires on
+  `endpoint`, `via`, `status`, `latency_ms`, `attempts`). A failed check is retried once after
+  `RetryDelay` (2 s), so one Cloudflare connection reset doesn't count as an outage. Alert rule **"openbucket storage unhealthy"** fires on
   errors. Credentials: Keyring `OB_MONITOR_INGEST_KEY` (ingest key "Openbucket Ingest", zone `appleby`;
   falls back to the shared `MONITOR_APPLEBY_INGEST_KEY`), granted to the `openbucket-api` token.
   The ingest URL defaults to `env.DefaultMonitorIngestURL`

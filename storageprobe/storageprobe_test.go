@@ -10,6 +10,7 @@ import (
 )
 
 func TestCheck(t *testing.T) {
+	RetryDelay = 10 * time.Millisecond
 	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/_health" {
 			t.Errorf("probed %s, want /_health", r.URL.Path)
@@ -48,6 +49,22 @@ func TestCheck(t *testing.T) {
 				t.Fatalf("took %dms", r.LatencyMS)
 			}
 		})
+	}
+}
+
+func TestCheckRetriesOnce(t *testing.T) {
+	RetryDelay = 10 * time.Millisecond
+	calls := 0
+	flaky := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+		}
+	}))
+	defer flaky.Close()
+	r := Check(context.Background(), "https://cdn.example", "public", flaky.URL)
+	if !r.OK() || r.Attempts != 2 || calls != 2 {
+		t.Fatalf("got %+v after %d calls, want healthy on the retry", r, calls)
 	}
 }
 
