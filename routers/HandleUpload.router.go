@@ -4,8 +4,10 @@ import (
 	"errors"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/aidenappl/openbucket-api/aws"
@@ -36,7 +38,8 @@ type HandleUploadRequest struct {
 }
 
 // HandleUpload serves PUT /core/v1/{id}/object: a multipart form with the
-// file in `file` and optional `key` and `prefix` fields.
+// file in `file` and optional `key`, `prefix` and `content_type` fields. The
+// stored Content-Type comes from uploadContentType.
 //
 // ⚠️ The file is streamed to a temporary file and uploaded from there. It
 // used to be read into memory whole (ParseMultipartForm + io.ReadAll), behind
@@ -64,9 +67,11 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		tmp      *os.File
-		filename string
-		size     int64
+		tmp         *os.File
+		filename    string
+		size        int64
+		contentType string // the content_type field
+		partType    string // the file part's own Content-Type header
 	)
 	defer func() {
 		if tmp != nil {
@@ -96,12 +101,13 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			filename = part.FileName()
+			partType = part.Header.Get("Content-Type")
 			size, err = io.Copy(tmp, part)
 			if err != nil {
 				uploadReadError(w, err)
 				return
 			}
-		case "key", "prefix":
+		case "key", "prefix", "content_type":
 			v, err := io.ReadAll(io.LimitReader(part, maxFieldBytes+1))
 			if err != nil {
 				uploadReadError(w, err)
@@ -111,10 +117,13 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 				responder.SendError(w, http.StatusBadRequest, part.FormName()+" is too long", nil)
 				return
 			}
-			if part.FormName() == "key" {
+			switch part.FormName() {
+			case "key":
 				req.Key = string(v)
-			} else {
+			case "prefix":
 				req.Prefix = string(v)
+			default:
+				contentType = strings.TrimSpace(string(v))
 			}
 		}
 		part.Close()
@@ -141,14 +150,22 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if contentType != "" {
+		if _, _, err := mime.ParseMediaType(contentType); err != nil {
+			responder.SendError(w, http.StatusBadRequest, "invalid content_type", err)
+			return
+		}
+	}
+
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		responder.SendError(w, http.StatusInternalServerError, "Failed to read buffered upload", err)
 		return
 	}
 	err = aws.Upload(r.Context(), aws.UploadRequest{
-		Bucket: req.Bucket,
-		Key:    req.Prefix + req.Key,
-		Body:   tmp,
+		Bucket:      req.Bucket,
+		Key:         req.Prefix + req.Key,
+		Body:        tmp,
+		ContentType: uploadContentType(contentType, partType, req.Key),
 	})
 	if err != nil {
 		if aws.CheckError(err, w, r) {
@@ -160,6 +177,26 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("upload: %s (%d bytes)", req.Prefix+req.Key, size)
 	responder.New(w, nil, "File uploaded successfully")
+}
+
+// uploadContentType picks the Content-Type to store: the explicit
+// content_type field, else the file part's Content-Type header, else the type
+// registered for the key's extension, else "" (the backend's default). A part
+// header of application/octet-stream is what browsers and curl send when they
+// don't know, so it doesn't beat a known extension.
+func uploadContentType(field, partHeader, key string) string {
+	if field != "" {
+		return field
+	}
+	if partHeader != "" && !strings.HasPrefix(partHeader, "application/octet-stream") {
+		if _, _, err := mime.ParseMediaType(partHeader); err == nil {
+			return partHeader
+		}
+	}
+	if t := mime.TypeByExtension(strings.ToLower(path.Ext(key))); t != "" {
+		return t
+	}
+	return ""
 }
 
 // uploadReadError reports a failure reading the request body: 413 when it

@@ -144,6 +144,12 @@ container is proof its migrations applied. Nothing needs to be applied by hand.
   download (`GET /object`) get `middleware.LongTransfer` (2 h). Was: 15 s `ReadTimeout`, 60 s
   `WriteTimeout` for everything (openbucket-api#12). The console and API resolve to a LAN address
   (no Cloudflare in front), so no proxy body cap applies.
+- **Uploads set Content-Type** (APL-105). `routers.uploadContentType` picks, in order: the optional
+  `content_type` multipart field (400 if `mime.ParseMediaType` rejects it), the file part's own
+  `Content-Type` header (ignored when it is `application/octet-stream`, which is what browsers and
+  curl send for "unknown"), then `mime.TypeByExtension` of the key (Go's built-in table, so it works
+  on Alpine), else nothing (the backend's `binary/octet-stream`). `aws.Upload` passes it as
+  `PutObjectInput.ContentType`. Before this, every API upload was stored as binary/octet-stream.
 - **Changing your own password needs the current one.** `PUT /auth/self` with `password` requires
   `current_password` (400 if missing or wrong — 400, not 401, because clients treat 401 as an
   expired session), refuses SSO accounts, and rejects an unchanged password
