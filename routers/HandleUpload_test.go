@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"sync"
 	"testing"
@@ -19,10 +20,11 @@ import (
 
 // fakeS3 accepts PutObject and records what it received.
 type fakeS3 struct {
-	mu   sync.Mutex
-	key  string
-	sum  [32]byte
-	size int
+	mu    sync.Mutex
+	key   string
+	sum   [32]byte
+	size  int
+	ctype string
 }
 
 func (f *fakeS3) server(t *testing.T) *httptest.Server {
@@ -33,7 +35,7 @@ func (f *fakeS3) server(t *testing.T) *httptest.Server {
 		}
 		b, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
-		f.key, f.sum, f.size = r.URL.Path, sha256.Sum256(b), len(b)
+		f.key, f.sum, f.size, f.ctype = r.URL.Path, sha256.Sum256(b), len(b), r.Header.Get("Content-Type")
 		f.mu.Unlock()
 		w.Header().Set("ETag", `"e"`)
 	}))
@@ -123,5 +125,73 @@ func TestHandleUploadNotMultipart(t *testing.T) {
 	rr := upload(uploadContext("http://127.0.0.1:1"), strings.NewReader("{}"), "application/json")
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status %d", rr.Code)
+	}
+}
+
+// APL-105: content_type field > file part header > key extension > backend default.
+func TestUploadContentType(t *testing.T) {
+	tests := []struct {
+		name, field, header, key, want string
+	}{
+		{"field wins", "text/plain", "image/png", "a.css", "text/plain"},
+		{"part header next", "", "image/png", "a.css", "image/png"},
+		{"extension next", "", "", "site/app.css", "text/css; charset=utf-8"},
+		{"extension case-insensitive", "", "", "LOGO.PNG", "image/png"},
+		{"octet-stream header loses to extension", "", "application/octet-stream", "a.js", "text/javascript; charset=utf-8"},
+		{"invalid header ignored", "", "not a type", "a.png", "image/png"},
+		{"nothing known", "", "", "README", ""},
+		{"octet-stream and no extension", "", "application/octet-stream", "blob", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := uploadContentType(tt.field, tt.header, tt.key); got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHandleUploadStoresContentType(t *testing.T) {
+	f := &fakeS3{}
+	srv := f.server(t)
+
+	// Explicit field.
+	body, ct := form(t, [][2]string{{"content_type", "image/svg+xml"}, {"file", "x.bin"}}, []byte("<svg/>"))
+	if rr := upload(uploadContext(srv.URL), body, ct); rr.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
+	}
+	if f.ctype != "image/svg+xml" {
+		t.Fatalf("field: stored %q", f.ctype)
+	}
+
+	// CreateFormFile sends application/octet-stream; the extension wins.
+	body, ct = form(t, [][2]string{{"file", "style.css"}}, []byte("a{}"))
+	if rr := upload(uploadContext(srv.URL), body, ct); rr.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
+	}
+	if f.ctype != "text/css; charset=utf-8" {
+		t.Fatalf("extension: stored %q", f.ctype)
+	}
+
+	// The file part's own header.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", `form-data; name="file"; filename="photo"`)
+	h.Set("Content-Type", "image/webp")
+	pw, _ := mw.CreatePart(h)
+	pw.Write([]byte("RIFF"))
+	mw.Close()
+	if rr := upload(uploadContext(srv.URL), &buf, mw.FormDataContentType()); rr.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
+	}
+	if f.ctype != "image/webp" {
+		t.Fatalf("part header: stored %q", f.ctype)
+	}
+
+	// An unparseable field is a 400.
+	body, ct = form(t, [][2]string{{"content_type", "not a type"}, {"file", "a.txt"}}, []byte("x"))
+	if rr := upload(uploadContext(srv.URL), body, ct); rr.Code != http.StatusBadRequest {
+		t.Fatalf("invalid field: status %d", rr.Code)
 	}
 }

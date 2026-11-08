@@ -15,6 +15,9 @@ type UploadRequest struct {
 	Key       string
 	Body      io.ReadSeeker
 	Overwrite *bool // Optional: to control whether to overwrite existing objects
+	// ContentType is stored on the object and served back as its Content-Type.
+	// Empty leaves it to the storage backend (binary/octet-stream).
+	ContentType string
 }
 
 func Upload(ctx context.Context, req UploadRequest) error {
@@ -27,6 +30,9 @@ func Upload(ctx context.Context, req UploadRequest) error {
 		Bucket: aws.String(req.Bucket),
 		Key:    aws.String(req.Key),
 		Body:   req.Body,
+	}
+	if req.ContentType != "" {
+		input.ContentType = aws.String(req.ContentType)
 	}
 
 	request, _ := s3Client.PutObjectRequest(input)
