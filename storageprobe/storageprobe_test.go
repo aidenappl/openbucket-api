@@ -79,3 +79,64 @@ func TestRoundChecksPublicAndLAN(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestTrackerEscalatesOnlyAfterThreshold(t *testing.T) {
+	ok := Result{Endpoint: "https://cdn.example", Status: 200}
+	bad := Result{Endpoint: "https://cdn.example", Error: "timeout"}
+	tests := []struct {
+		name  string
+		via   string
+		seq   []Result
+		want  []Level
+		final int
+	}{
+		{"one public blip is a warning", "public", []Result{ok, bad, ok}, []Level{LEVEL_INFO, LEVEL_WARN, LEVEL_INFO}, 0},
+		{"public errors on the third failed round", "public", []Result{bad, bad, bad, bad}, []Level{LEVEL_WARN, LEVEL_WARN, LEVEL_ERROR, LEVEL_ERROR}, 4},
+		{"a success resets the run", "public", []Result{bad, bad, ok, bad, bad}, []Level{LEVEL_WARN, LEVEL_WARN, LEVEL_INFO, LEVEL_WARN, LEVEL_WARN}, 2},
+		{"lan errors on the second failed round", "lan", []Result{bad, bad}, []Level{LEVEL_WARN, LEVEL_ERROR}, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := NewTracker()
+			var last Result
+			for i, r := range tt.seq {
+				r.Via = tt.via
+				if got := tr.Observe(&r); got != tt.want[i] {
+					t.Fatalf("round %d: level %s, want %s", i+1, got, tt.want[i])
+				}
+				last = r
+			}
+			if last.ConsecutiveFailures != tt.final || last.Threshold != FailThreshold(tt.via) {
+				t.Fatalf("last = %+v, want %d consecutive failures", last, tt.final)
+			}
+		})
+	}
+}
+
+func TestTrackerKeepsRoutesApart(t *testing.T) {
+	tr := NewTracker()
+	pub := Result{Endpoint: "https://cdn.example", Via: "public", Error: "timeout"}
+	lan := Result{Endpoint: "https://cdn.example", Via: "lan", Status: 200}
+	other := Result{Endpoint: "https://s3.example", Via: "public", Error: "timeout"}
+	tr.Observe(&pub)
+	tr.Observe(&lan)
+	tr.Observe(&other)
+	pub2 := pub
+	if tr.Observe(&pub2); pub2.ConsecutiveFailures != 2 {
+		t.Fatalf("public run = %d, want 2 (lan and other endpoints are separate)", pub2.ConsecutiveFailures)
+	}
+}
+
+func TestNextDelayIsJittered(t *testing.T) {
+	seen := map[time.Duration]bool{}
+	for i := 0; i < 50; i++ {
+		d := nextDelay()
+		if d < Interval || d >= Interval+JITTER {
+			t.Fatalf("delay %s outside [%s, %s)", d, Interval, Interval+JITTER)
+		}
+		seen[d] = true
+	}
+	if len(seen) < 2 {
+		t.Fatal("no jitter")
+	}
+}
