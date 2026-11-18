@@ -67,7 +67,7 @@ actual storage lives in `openbucket-go` instances (`cdn.appleby.cloud`,
 | `sso/` | `sso` | SSO config (`sso.*` settings) and `session.go`: the `go-oidc-session` `Manager` (rebuilt by `Reload()` on config save), the user resolver, and the token `Sealer` over `tools.Encrypt`. No provider-specific code. |
 | `responder/` | `responder` | Envelopes: `New`, `NewWithPagination` (adds `pagination`, e.g. `Truncation`). **Note: no `QueryError` helper** — use `SendError(w, http.StatusInternalServerError, msg, err)`. |
 | `aws/` | `aws` | S3 client wrappers and error mapping. All sessions share `storageHTTPClient` (pooled keep-alive, HTTP/2). `ListContents` = folders + objects in one listing. |
-| `storageprobe/` | `storageprobe` | Storage health checks every 30 s → Monitor `storage.health` events (see Operations). |
+| `storageprobe/` | `storageprobe` | Storage health checks every 30 s (+ up to 5 s jitter) → Monitor `storage.health` events; error only after consecutive failed rounds (see Operations). |
 | `timing/` | `timing` | Per-request spans (`Track(ctx, "storage")`) rendered as `Server-Timing: auth;dur=…, storage;dur=…, total;dur=…`. No-op without a recorder. |
 
 ## Running, building & testing
@@ -357,10 +357,17 @@ this service keeps its own users and no code or config names a specific provider
   `gh-runner-broker` service in Monitor (zone `appleby`).
 
 - **Monitor (zone `appleby`, service `openbucket-api`):** `storageprobe` checks every storage
-  endpoint in `sessions` every 30 s — `GET <endpoint>/_health` over the public URL and, when
-  mapped, the LAN address — and emits `storage.health` (info when 200, error otherwise, with
-  `endpoint`, `via`, `status`, `latency_ms`, `attempts`). A failed check is retried once after
-  `RetryDelay` (2 s), so one Cloudflare connection reset doesn't count as an outage. Alert rule **"openbucket storage unhealthy"** fires on
+  endpoint in `sessions` every 30 s plus up to 5 s of jitter (`Interval`, `JITTER`) —
+  `GET <endpoint>/_health` over the public URL and, when mapped, the LAN address — and emits
+  `storage.health` with `endpoint`, `via`, `status`, `latency_ms`, `attempts`,
+  `consecutive_failures` and `threshold`. A failed check is retried once after `RetryDelay`
+  (2 s). Levels (`Tracker`, per endpoint + route): **info** when 200; **warn** while it has
+  failed fewer than `threshold` rounds in a row; **error** from then on
+  (`PUBLIC_FAIL_THRESHOLD` = 3 ≈ 1.5 min, `LAN_FAIL_THRESHOLD` = 2). Why (APL-182): the public
+  check hairpins (API host → site WAN → Cloudflare → NPM). In the 10-28/10-29/11-05/11-11
+  bursts every public endpoint failed in the same minutes, the failed requests never reached
+  NPM, and NPM kept serving other clients at normal upstream latency — transient loss on the
+  hairpin path, not storage or NPM. Don't "fix" this by raising the 5 s timeout. Alert rule **"openbucket storage unhealthy"** fires on
   errors. Credentials: Keyring `OB_MONITOR_INGEST_KEY` (ingest key "Openbucket Ingest", zone `appleby`;
   falls back to the shared `MONITOR_APPLEBY_INGEST_KEY`), granted to the `openbucket-api` token.
   The ingest URL defaults to `env.DefaultMonitorIngestURL`

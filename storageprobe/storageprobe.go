@@ -11,12 +11,21 @@
 // Each endpoint is checked two ways: over the LAN (the address this API uses,
 // when OB_STORAGE_INTERNAL_ENDPOINTS maps it) and through its public URL (the
 // path CDN users take, via Cloudflare).
+//
+// ⚠️ The public check hairpins: this API's host goes out through the site's
+// WAN to Cloudflare and back in to NPM. In bursts (10-28, 10-29, 11-05,
+// 11-11) single requests on that path never reached NPM for minutes at a time
+// while NPM served everyone else normally and the LAN checks stayed green
+// (APL-182). So a check is reported as an error only after it has failed for
+// FailThreshold rounds in a row (Tracker); shorter runs are warnings.
 package storageprobe
 
 import (
 	"context"
 	"log"
+	"math/rand/v2"
 	"net/http"
+	"sync"
 	"time"
 
 	monitor "github.com/aidenappl/go-monitor"
@@ -25,8 +34,21 @@ import (
 	"github.com/aidenappl/openbucket-api/query"
 )
 
-// Interval between rounds of checks.
-const Interval = 30 * time.Second
+// Interval between rounds of checks; each round waits Interval plus up to
+// JITTER, so the probe doesn't fire in lockstep with anything else on a
+// 30-second clock.
+const (
+	Interval = 30 * time.Second
+	JITTER   = 5 * time.Second
+)
+
+// Rounds a check must fail in a row before it is an error (APL-182). A public
+// stall on the hairpin path lasts under a minute or two; three rounds is
+// about 1.5 minutes. The LAN path has no Cloudflare in it, so two.
+const (
+	PUBLIC_FAIL_THRESHOLD = 3
+	LAN_FAIL_THRESHOLD    = 2
+)
 
 // Result is one check of one storage server.
 type Result struct {
@@ -37,6 +59,11 @@ type Result struct {
 	LatencyMS int64  `json:"latency_ms"`
 	Error     string `json:"error,omitempty"`
 	Attempts  int    `json:"attempts"`
+	// ConsecutiveFailures counts failed rounds in a row for this endpoint and
+	// route, including this one; 0 when healthy.
+	ConsecutiveFailures int `json:"consecutive_failures"`
+	// Threshold is the run of failures at which the result is an error.
+	Threshold int `json:"threshold"`
 }
 
 // OK reports a 200 from /_health.
@@ -113,33 +140,88 @@ func Round(ctx context.Context, endpoints []string, emit func(Result)) {
 	}
 }
 
-// Report sends a result to Monitor: info when healthy, error otherwise.
-func Report(r Result) {
-	if r.OK() {
-		monitor.Info(context.Background(), "storage.health", r)
-		return
+// Level is how a result is reported.
+type Level string
+
+const (
+	LEVEL_INFO  Level = "info"  // healthy
+	LEVEL_WARN  Level = "warn"  // failing, but not for FailThreshold rounds yet
+	LEVEL_ERROR Level = "error" // failing for at least FailThreshold rounds in a row
+)
+
+// FailThreshold is the number of failed rounds in a row that makes via's
+// result an error.
+func FailThreshold(via string) int {
+	if via == "lan" {
+		return LAN_FAIL_THRESHOLD
 	}
-	log.Printf("storage: %s via %s unhealthy: %s", r.Endpoint, r.Via, r.Error)
-	monitor.Error(context.Background(), "storage.health", r)
+	return PUBLIC_FAIL_THRESHOLD
 }
 
-// Start runs a round every Interval until ctx ends. Endpoints are re-read
+// Tracker remembers consecutive failures per endpoint and route.
+type Tracker struct {
+	mu    sync.Mutex
+	fails map[string]int
+}
+
+func NewTracker() *Tracker { return &Tracker{fails: map[string]int{}} }
+
+// Observe records r, fills in its ConsecutiveFailures and Threshold, and
+// returns the level to report it at.
+func (t *Tracker) Observe(r *Result) Level {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	key := r.Endpoint + " " + r.Via
+	r.Threshold = FailThreshold(r.Via)
+	if r.OK() {
+		delete(t.fails, key)
+		r.ConsecutiveFailures = 0
+		return LEVEL_INFO
+	}
+	t.fails[key]++
+	r.ConsecutiveFailures = t.fails[key]
+	if r.ConsecutiveFailures >= r.Threshold {
+		return LEVEL_ERROR
+	}
+	return LEVEL_WARN
+}
+
+// Reporter sends results to Monitor at the level its Tracker decides.
+func Reporter(t *Tracker) func(Result) {
+	return func(r Result) {
+		switch t.Observe(&r) {
+		case LEVEL_INFO:
+			monitor.Info(context.Background(), "storage.health", r)
+		case LEVEL_WARN:
+			monitor.Warn(context.Background(), "storage.health", r)
+		default:
+			log.Printf("storage: %s via %s unhealthy for %d rounds: %s", r.Endpoint, r.Via, r.ConsecutiveFailures, r.Error)
+			monitor.Error(context.Background(), "storage.health", r)
+		}
+	}
+}
+
+// nextDelay is Interval plus a random part of JITTER.
+func nextDelay() time.Duration {
+	return Interval + time.Duration(rand.Int64N(int64(JITTER)))
+}
+
+// Start runs a round every Interval (plus jitter) until ctx ends. Endpoints are re-read
 // from the sessions table each round, so a new storage server is covered.
 func Start(ctx context.Context) {
+	report := Reporter(NewTracker())
 	go func() {
-		t := time.NewTicker(Interval)
-		defer t.Stop()
 		for {
 			endpoints, err := query.ListSessionEndpoints(db.DB)
 			if err != nil {
 				log.Printf("storage: probe could not list endpoints: %v", err)
 			} else {
-				Round(ctx, endpoints, Report)
+				Round(ctx, endpoints, report)
 			}
 			select {
 			case <-ctx.Done():
 				return
-			case <-t.C:
+			case <-time.After(nextDelay()):
 			}
 		}
 	}()
